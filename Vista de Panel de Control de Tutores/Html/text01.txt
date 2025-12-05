@@ -1,0 +1,90 @@
+graph TD
+    subgraph Navbar Superior
+        A[Icono Usuario - Vinculado a Ajustes]
+        B[Buscador Global]
+        C[Calendario (Acceso Rápido)]
+        D[Notificaciones/Alertas]
+        E[Desconectar (Acceso Rápido)]
+    end
+
+    subgraph Barra Lateral
+        F[1. Panel / Dashboard]
+        G[2. Gestión de Reservas]
+        H[3. Historial de Tutorías]
+        I[4. Cursos (Selección de Materias)]
+        J[5. Ajustes]
+        K[6. Desconectar]
+    end
+
+    subgraph Contenido Principal (Foco en el Panel/Dashboard)
+        L[Gráficas y Métricas (KPIs)]
+        M[Calendario Interactivo Completo]
+        N[Bloque de Notas (Guardado Persistente)]
+        O[Configuración de Pagos]
+        O --> P(Tarifa por Tutoría: $ / Bs)
+        O --> Q(Métodos de Pago)
+        Q --> R(Transferencia Bancaria - Configuración de Cuenta)
+        Q --> S(Pago con QR - Generación y Gestión de Código)
+    end
+
+    subgraph Gestión de Reservas
+        T[Mis Reservas (Crear/Ver)]
+        U[Mis Materias (Materias seleccionadas para enseñar)]
+    end
+
+    subgraph Ajustes
+        V[Configuración de Perfil]
+        V --> W(Detalle Personal de Usuario)
+        V --> X(Configuraciones de la Cuenta)
+        V --> Y(Verificación de la Identidad)
+        Z[Servicio de Ayuda]
+    end
+
+    %% Flujo de Navegación
+    F --> L
+    F --> M
+    F --> N
+    F --> O
+    G --> T
+    G --> U
+    J --> V
+    J --> Z
+    A --> V
+    C --> M
+-------------------------------------------------------------------------------------------------------------------------------
+graph TD
+    A[Colección Base (Root)] --> B[Tutor Data (Private)]
+    A --> C[Materias Globales (Public)]
+
+    subgraph B [users/{userId}]
+        B1[Perfil / PerfilConfig]
+        B2[Notas Tutor / Notas]
+        B3[Reservas / MisReservas]
+        B4[Historial / HistorialTutorias]
+        B5[Materias a Enseñar / MisMaterias]
+    end
+
+    subgraph C [public/data]
+        C1[Materias (Lista Base de 40 del PDF)]
+    end
+
+    %% Detalles de las Colecciones
+    B1 --> B1a{Detalles Personales}
+    B1 --> B1b{Configuración Cuenta}
+    B1 --> B1c{Verificación ID}
+    B1 --> B1d{Configuración de Pagos}
+    B1d --> B1d_1(Tarifa y Moneda)
+    B1d --> B1d_2(Métodos: Transferencia/QR)
+
+    B2 --> B2a{Texto y Fecha}
+
+    B3 --> B3a{ID Materia, ID Estudiante, Fecha/Hora, Estado}
+
+    B4 --> B4a{Registro de Sesión: Fecha, Duración, Materia, Estudiante, Pago}
+
+    B5 --> B5a{Referencia a C1, Detalle de Tarifa Propia}
+
+    %% Vínculos y Relaciones
+    C1 --> B5  %% Materias Globales alimentan la selección de Mis Materias
+    B5 --> B3  %% Mis Reservas dependen de las Materias a Enseñar
+    B3 --> B4  %% Las Reservas completadas se mueven al Historial

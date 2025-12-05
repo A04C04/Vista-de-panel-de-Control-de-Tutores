@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control del Tutor</title>
+    <!-- Incluye Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluye Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Incluye Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Incluye la fuente Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    
+    <!-- Configuración de Firebase (debe estar en el entorno de ejecución) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, query, where, getDocs, updateDoc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Inicialización de variables globales
+        let app, db, auth, userId = 'default-user';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Log de depuración para Firestore
+        setLogLevel('debug');
+
+        // Función de inicialización y autenticación
+        async function initializeAndAuthenticate() {
+            if (!firebaseConfig) {
+                console.error("Firebase configuration is missing.");
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Usuario autenticado. UID:", userId);
+                        document.getElementById('user-id-display').textContent = userId;
+                        // Inicia la carga de datos y listeners una vez autenticado
+                        loadInitialData(userId);
+                    } else {
+                        userId = 'anonymous';
+                        console.log("Usuario anónimo o desautenticado.");
+                        document.getElementById('user-id-display').textContent = 'Anónimo';
+                        // Permite cargar datos públicos si los hubiera
+                        loadInitialData(userId);
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error en la inicialización o autenticación de Firebase:", error);
+            }
+        }
+
+        // Simulación de módulo de usuario para desconexión
+        const Usuario = {
+            handleLogout: async () => {
+                try {
+                    await signOut(auth);
+                    console.log("Sesión cerrada con éxito.");
+                    // Opcional: Redirigir o actualizar la UI
+                    // window.location.hash = '#login'; 
+                } catch (error) {
+                    console.error("Error al cerrar sesión:", error);
+                }
+            }
+        };
+
+        // Función para cargar datos iniciales (ejemplo)
+        function loadInitialData(currentUserId) {
+            // Ejemplo de listener para datos privados del tutor
+            const tutorRef = doc(db, 'artifacts', appId, 'users', currentUserId, 'profile', 'data');
+            onSnapshot(tutorRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    console.log("Datos del tutor:", data);
+                    // Actualiza el nombre del tutor en la UI
+                    document.getElementById('tutor-name-display').textContent = data.name || 'Tutor Desconocido';
+                } else {
+                    console.log("No hay datos de perfil para el tutor.");
+                    // Crea un perfil por defecto si no existe
+                    setDoc(tutorRef, { name: 'Tutor', bio: 'Bienvenido a tu panel.', lastLogin: new Date().toISOString() }, { merge: true })
+                        .then(() => console.log("Perfil inicial creado."))
+                        .catch(err => console.error("Error al crear perfil:", err));
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en el perfil:", error);
+            });
+            
+            // Aquí puedes agregar listeners para otras colecciones (e.g., reservas, historial)
+        }
+
+        // Exportar funciones y variables necesarias para el scope global si es necesario
+        window.db = db;
+        window.auth = auth;
+        window.Usuario = Usuario;
+        window.initializeAndAuthenticate = initializeAndAuthenticate;
+    </script>
+
+    <!-- Configuración de Tailwind para usar las variables CSS en las clases -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-color': 'var(--primary-color)',
+                        'secondary-color': 'var(--secondary-color)',
+                        'secondary-color2': 'var(--secondary-color2)',
+                        'tertiary-color': 'var(--tertiary-color)',
+                        'tertiary-color2': 'var(--tertiary-color2)',
+                        'text-light': 'var(--text-light)',
+                        'text-dark': 'var(--text-dark)',
+                        'success': '#10B981', // Verde para éxito
+                        'warning': '#F59E0B', // Amarillo para advertencia
+                        'error': '#EF4444', // Rojo para error
+                    },
+                    boxShadow: {
+                        'card-shadow': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- CSS y Estilos Globales (NUEVO DISEÑO) -->
+    <style>
+        /* Variables CSS del Nuevo Diseño */
+        :root {
+            --primary-color: #023047; /* Azul Oscuro - Sidebar/Fondo de Acento */
+            --secondary-color: #FB8500; /* Naranja Brillante - Botón Principal/Activo */
+            --secondary-color2: #219EBC; /* Azul Claro - Hover/Acento Secundario */
+            --tertiary-color: #F8F9FA; /* Gris Muy Claro - Fondo de Card/Superficie */
+            --tertiary-color2: #343A40; /* Texto Principal Oscuro */
+            --text-light: #DEE2E6; /* Texto Claro/Gris */
+            --sidebar-width: 280px;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--tertiary-color); /* Fondo global muy claro */
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            transition: margin-left 0.3s ease-in-out;
+        }
+
+        .sidebar.collapsed {
+            width: 70px;
+            transform: translateX(0);
+        }
+
+        .sidebar.collapsed + .main-content {
+            margin-left: 70px;
+        }
+        
+        /* Estilos de las tarjetas (reemplaza 'card-shadow' de Tailwind si es necesario) */
+        .card-shadow {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Estilo para el modal */
+        .modal-content {
+            animation: fadeInScale 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+        
+        /* Estilo para el elemento activo de la barra lateral */
+        .sidebar-item.active {
+            background-color: var(--secondary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .sidebar-item.active .icon-default {
+            display: none;
+        }
+        
+        .sidebar-item.active .icon-active {
+            display: block;
+            color: var(--primary-color);
+        }
+        .icon-active {
+            display: none;
+        }
+        
+        /* Animación de Dropdown */
+        .dropdown-menu {
+            transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+        }
+    </style>
+</head>
+<body class="flex bg-gray-50">
+
+    <!-- BARRA LATERAL (SIDEBAR) -->
+    <aside id="sidebar" class="sidebar fixed top-0 left-0 h-full bg-primary-color text-white flex flex-col p-4 z-40">
+        <!-- Logo y Toggle -->
+        <div class="flex items-center justify-between h-16 mb-6">
+            <h1 class="text-xl font-bold text-secondary-color truncate whitespace-nowrap logo-text">TutorGO</h1>
+            <button id="sidebar-toggle" class="p-2 rounded-full hover:bg-white/10 transition-colors">
+                <i data-lucide="chevrons-left" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <!-- Navegación Principal -->
+        <nav class="flex-grow space-y-2">
+            <a href="#resumen" data-view="resumen" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Resumen Académico</span>
+            </a>
+            <a href="#reservas" data-view="reservas" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="calendar-check" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="calendar-check" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Gestión de Reservas</span>
+            </a>
+            <a href="#materias" data-view="materias" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="book-open-text" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="book-open-text" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Materias Asignadas</span>
+            </a>
+            <a href="#historial" data-view="historial" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="clock-history" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="clock-history" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Historial de Clases</span>
+            </a>
+            <a href="#pagos" data-view="pagos" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="wallet" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="wallet" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Gestión de Pagos</span>
+            </a>
+            <a href="#ajustes" data-view="ajustes" class="sidebar-item flex items-center p-3 rounded-xl hover:bg-secondary-color/80 transition-colors text-text-light hover:text-primary-color">
+                <i data-lucide="settings" class="w-5 h-5 mr-3 icon-default"></i>
+                <i data-lucide="settings" class="w-5 h-5 mr-3 icon-active"></i>
+                <span class="link-text font-medium">Ajustes y Perfil</span>
+            </a>
+        </nav>
+
+        <!-- Sección inferior (Desconexión) -->
+        <div class="mt-8 border-t border-white/20 pt-4">
+            <button id="btn-desconectar-sidebar" class="w-full flex items-center p-3 rounded-xl hover:bg-red-600 transition-colors text-text-light">
+                <i data-lucide="log-out" class="w-5 h-5 mr-3"></i>
+                <span class="link-text font-medium">Desconectar</span>
+            </button>
+            <p class="text-xs text-text-light/50 mt-2 link-text truncate">ID: <span id="user-id-display">Cargando...</span></p>
+        </div>
+    </aside>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main id="main-content" class="main-content flex-grow p-4 md:p-8">
+        <!-- Barra Superior (Header) -->
+        <header class="h-16 flex items-center justify-between mb-8">
+            <h2 id="view-title" class="text-2xl font-semibold text-tertiary-color2">Resumen Académico</h2>
+            <div class="flex items-center space-x-4">
+                <button onclick="openSearchModal()" class="flex items-center px-3 py-2 bg-white rounded-xl text-gray-600 hover:bg-gray-100 transition-colors border">
+                    <i data-lucide="search" class="w-5 h-5 mr-2"></i>
+                    <span class="text-sm hidden sm:inline">Buscar...</span>
+                    <span class="text-xs ml-2 border px-1 py-0.5 rounded-md text-gray-400 hidden sm:inline">Ctrl+K</span>
+                </button>
+                
+                <button class="p-2 bg-white rounded-xl text-secondary-color2 hover:bg-gray-100 transition-colors border">
+                    <i data-lucide="bell" class="w-5 h-5"></i>
+                </button>
+
+                <!-- Dropdown de Perfil -->
+                <div class="relative">
+                    <button id="btn-toggle-profile" class="flex items-center space-x-2 p-1 bg-white rounded-full hover:bg-gray-100 transition-colors border">
+                        <img src="https://placehold.co/40x40/023047/DEE2E6?text=T" onerror="this.onerror=null; this.src='https://placehold.co/40x40/023047/DEE2E6?text=T';" alt="Avatar" class="w-8 h-8 rounded-full object-cover">
+                        <span id="tutor-name-display" class="font-medium text-tertiary-color2 hidden md:inline">Tutor</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 mr-1 hidden md:inline"></i>
+                    </button>
+                    
+                    <div id="profile-dropdown" class="dropdown-menu absolute right-0 mt-2 w-56 bg-white rounded-xl card-shadow hidden opacity-0 translate-y-2 z-50 transform origin-top-right">
+                        <div class="p-4 border-b">
+                            <p class="font-semibold text-tertiary-color2">Hola, <span id="tutor-name-dropdown">Tutor</span></p>
+                            <p class="text-sm text-gray-500 truncate">tutor@classgo.com</p>
+                        </div>
+                        <nav class="p-2 space-y-1">
+                            <a href="#ajustes" data-view="ajustes" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                                <i data-lucide="user" class="w-5 h-5 mr-3"></i>
+                                Perfil y Cuenta
+                            </a>
+                            <a href="#" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                                <i data-lucide="life-buoy" class="w-5 h-5 mr-3"></i>
+                                Soporte
+                            </a>
+                        </nav>
+                        <div class="p-2 border-t">
+                            <button id="btn-desconectar-dropdown" class="w-full flex items-center px-3 py-2 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                                <i data-lucide="log-out" class="w-5 h-5 mr-3"></i>
+                                Desconectar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- VISTAS DINÁMICAS -->
+        <div id="content-container">
+            <!-- El contenido de la vista activa se inyectará aquí (Resumen Académico por defecto) -->
+        </div>
+    </main>
+
+    <!-- MODAL 1: Configuración de QR (Ejemplo) -->
+    <div id="qr-modal" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4" onclick="if(event.target.id === 'qr-modal') closeModal('qr-modal')">
+        <div class="bg-white rounded-xl w-full max-w-sm p-6 card-shadow modal-content" role="dialog" aria-modal="true">
+            <h3 class="text-xl font-semibold text-tertiary-color2 mb-4">Configurar Código QR</h3>
+            <p class="text-gray-600 mb-6">Genera un código QR para que los estudiantes puedan unirse fácilmente a tus clases.</p>
+            <div class="space-y-4">
+                <input type="text" id="qr-data-input" placeholder="Datos a codificar (Ej: ID de clase)" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-secondary-color focus:border-secondary-color transition-colors text-tertiary-color2">
+                <div id="qr-code-display" class="w-full h-40 bg-gray-100 flex items-center justify-center rounded-lg text-gray-500">
+                    [Espacio para el QR]
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+                <button onclick="closeModal('qr-modal')" class="px-4 py-2 text-gray-600 rounded-xl hover:bg-gray-100 transition-colors">Cancelar</button>
+                <button onclick="configureQR()" class="bg-secondary-color text-white px-4 py-2 rounded-xl hover:bg-secondary-color/90 transition-colors font-semibold">Guardar QR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Búsqueda Rápida (Ctrl+K) -->
+    <div id="search-modal" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden pt-20" onclick="if(event.target.id === 'search-modal') closeSearchModal()">
+        <div class="bg-white rounded-xl w-full max-w-xl card-shadow transition-all duration-300 mx-auto modal-content" role="dialog" aria-modal="true">
+            <div class="flex items-center border-b p-4">
+                <i data-lucide="search" class="w-5 h-5 text-gray-500 mr-3"></i>
+                <input type="text" id="search-input-modal" oninput="quickSearch()" placeholder="Buscar gestión de reserva, historial, materias, etc." class="flex-grow text-lg border-none focus:ring-0 focus:outline-none text-tertiary-color2">
+                <span class="text-sm text-gray-400 p-1 border rounded-md">Esc</span>
+            </div>
+            <div id="search-results" class="p-4 space-y-1 max-h-80 overflow-y-auto">
+                <p class="text-gray-500 text-sm">Empieza a escribir para buscar secciones del panel...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- LÓGICA PRINCIPAL DE JAVASCRIPT -->
+    <script>
+        // Funciones de utilidad para Modales
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function openSearchModal() {
+            openModal('search-modal');
+            document.getElementById('search-input-modal').focus();
+        }
+
+        function closeSearchModal() {
+            closeModal('search-modal');
+        }
+
+        function configureQR() {
+            // Lógica para configurar y guardar datos de QR
+            alertMessage('Configuración de QR guardada.', 'success');
+            closeModal('qr-modal');
+        }
+
+        // Función de Alerta/Mensaje (reemplazo de alert())
+        function alertMessage(message, type = 'info') {
+            // Implementación simple de un sistema de mensajes o notificaciones
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            // Aquí iría la lógica para mostrar una notificación en la UI
+            // Por ahora, solo se registra en la consola para evitar errores de iframe.
+        }
+
+        // Lógica de Vistas (Renderizado de Contenido Dinámico)
+        const views = {
+            'resumen': { title: 'Resumen Académico', html: `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Tarjeta 1: Clases Próximas -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl card-shadow">
+                        <h3 class="text-xl font-semibold text-secondary-color2 mb-4">Próximas Reservas</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-4 border rounded-lg bg-tertiary-color">
+                                <div>
+                                    <p class="font-medium text-tertiary-color2">Clase de Matemáticas Avanzadas</p>
+                                    <p class="text-sm text-gray-600">Con Estudiante A - Hoy, 18:00 hrs</p>
+                                </div>
+                                <button class="bg-secondary-color text-white px-3 py-1.5 rounded-lg text-sm hover:bg-secondary-color/90">Iniciar Clase</button>
+                            </div>
+                            <div class="flex items-center justify-between p-4 border rounded-lg bg-white">
+                                <div>
+                                    <p class="font-medium text-tertiary-color2">Taller de Diseño Gráfico</p>
+                                    <p class="text-sm text-gray-600">Con Estudiante B - Mañana, 10:00 hrs</p>
+                                </div>
+                                <span class="text-sm text-gray-500">Programada</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tarjeta 2: Perfil Rápido -->
+                    <div class="bg-white p-6 rounded-xl card-shadow flex flex-col items-center text-center">
+                        <img src="https://placehold.co/80x80/023047/DEE2E6?text=T" onerror="this.onerror=null; this.src='https://placehold.co/80x80/023047/DEE2E6?text=T';" alt="Avatar" class="w-20 h-20 rounded-full object-cover mb-4">
+                        <h4 class="text-xl font-bold text-tertiary-color2" id="tutor-name-summary">Tutor</h4>
+                        <p class="text-sm text-gray-500 mb-4">Matemáticas, Física y Programación</p>
+                        <button onclick="window.location.hash='#ajustes'" class="w-full bg-secondary-color2 text-white px-4 py-2 rounded-xl text-sm hover:bg-secondary-color2/90 transition-colors">Ver Perfil Completo</button>
+                        <button onclick="openModal('qr-modal')" class="w-full mt-2 border border-gray-300 text-tertiary-color2 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 transition-colors flex items-center justify-center">
+                             <i data-lucide="qr-code" class="w-4 h-4 mr-2"></i>  Generar QR de Clase
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Sección de Estadísticas -->
+                <div class="mt-6 bg-white p-6 rounded-xl card-shadow">
+                    <h3 class="text-xl font-semibold text-secondary-color2 mb-4">Estadísticas de Rendimiento</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+                        <div class="p-3 bg-gray-50 rounded-lg border">
+                            <p class="text-3xl font-bold text-tertiary-color2">45</p>
+                            <p class="text-sm text-gray-600">Clases Totales</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border">
+                            <p class="text-3xl font-bold text-success">4.9</p>
+                            <p class="text-sm text-gray-600">Valoración Promedio</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border">
+                            <p class="text-3xl font-bold text-warning">8</p>
+                            <p class="text-sm text-gray-600">Reservas Pendientes</p>
+                        </div>
+                        <div class="p-3 bg-gray-50 rounded-lg border">
+                            <p class="text-3xl font-bold text-primary-color">$1250</p>
+                            <p class="text-sm text-gray-600">Ingresos del Mes</p>
+                        </div>
+                    </div>
+                    <canvas id="monthly-chart" class="mt-4"></canvas>
+                </div>
+            `},
+            'reservas': { title: 'Gestión de Reservas', html: `<div class="bg-white p-6 rounded-xl card-shadow">
+                <h3 class="text-2xl font-bold text-tertiary-color2 mb-4">Reservas y Disponibilidad</h3>
+                <p class="text-gray-600 mb-6">Administra tus horarios y confirma las solicitudes de clase de tus estudiantes. (Lógica de Firestore pendiente).</p>
+                <div class="border p-4 rounded-lg bg-gray-50">
+                    <p class="font-medium text-primary-color">Solicitudes Pendientes (2)</p>
+                    <ul class="mt-2 space-y-2">
+                        <li class="flex justify-between items-center bg-white p-3 rounded-lg border">
+                            <span>Física Básica - Estudiante C (15:00 hrs)</span>
+                            <div>
+                                <button class="text-success hover:text-green-700 mr-3"><i data-lucide="check" class="w-4 h-4 inline"></i> Confirmar</button>
+                                <button class="text-error hover:text-red-700"><i data-lucide="x" class="w-4 h-4 inline"></i> Rechazar</button>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>`},
+            'materias': { title: 'Materias Asignadas', html: `<div class="bg-white p-6 rounded-xl card-shadow">
+                <h3 class="text-2xl font-bold text-tertiary-color2 mb-4">Mis Áreas de Especialización</h3>
+                <p class="text-gray-600 mb-6">Aquí puedes ver y gestionar las materias que te han sido asignadas.</p>
+                <ul class="space-y-2">
+                    <li class="p-3 border rounded-lg bg-tertiary-color flex justify-between items-center">
+                        <span class="font-medium text-primary-color">Matemáticas (Cálculo y Álgebra)</span>
+                        <span class="text-sm text-success">Activo</span>
+                    </li>
+                    <li class="p-3 border rounded-lg bg-white flex justify-between items-center">
+                        <span class="font-medium text-primary-color">Programación (Python y JS)</span>
+                        <span class="text-sm text-secondary-color2">Verificando</span>
+                    </li>
+                </ul>
+                <p class="mt-4 text-sm text-gray-500">Si deseas añadir o modificar una materia, por favor, contacta a soporte.</p>
+            </div>`},
+            'historial': { title: 'Historial de Clases', html: `<div class="bg-white p-6 rounded-xl card-shadow">
+                <h3 class="text-2xl font-bold text-tertiary-color2 mb-4">Registro de Clases Finalizadas</h3>
+                <p class="text-gray-600 mb-6">Revisa tus clases anteriores, valoraciones y notas de clase.</p>
+                <div class="space-y-3">
+                    <div class="p-3 border rounded-lg bg-gray-50 flex justify-between items-center">
+                        <div>
+                            <p class="font-medium text-primary-color">Física Avanzada</p>
+                            <p class="text-sm text-gray-600">10/Oct/2025 - Duración: 60 min</p>
+                        </div>
+                        <span class="text-warning font-semibold">4/5 Estrellas</span>
+                    </div>
+                    <div class="p-3 border rounded-lg bg-white flex justify-between items-center">
+                        <div>
+                            <p class="font-medium text-primary-color">Introducción a la Economía</p>
+                            <p class="text-sm text-gray-600">01/Oct/2025 - Duración: 90 min</p>
+                        </div>
+                        <span class="text-success font-semibold">5/5 Estrellas</span>
+                    </div>
+                </div>
+            </div>`},
+            'pagos': { title: 'Gestión de Pagos', html: `<div class="bg-white p-6 rounded-xl card-shadow">
+                <h3 class="text-2xl font-bold text-tertiary-color2 mb-4">Detalle de Ingresos</h3>
+                <p class="text-gray-600 mb-6">Monitorea tus pagos pendientes y recibidos.</p>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="p-4 bg-secondary-color/10 rounded-lg border border-secondary-color/30">
+                        <p class="text-lg font-semibold text-secondary-color">Saldo Pendiente</p>
+                        <p class="text-3xl font-bold text-secondary-color">$300.00</p>
+                    </div>
+                    <div class="p-4 bg-success/10 rounded-lg border border-success/30">
+                        <p class="text-lg font-semibold text-success">Pagos Recibidos (Mes)</p>
+                        <p class="text-3xl font-bold text-success">$950.00</p>
+                    </div>
+                </div>
+                <button class="bg-primary-color text-white px-4 py-2 rounded-xl hover:bg-primary-color/90 transition-colors">Solicitar Retiro</button>
+            </div>`},
+            'ajustes': { title: 'Ajustes y Perfil', html: `<div class="bg-white p-6 rounded-xl card-shadow">
+                <h3 class="text-2xl font-bold text-tertiary-color2 mb-4">Configuración de la Cuenta</h3>
+                <p class="text-gray-600 mb-6">Actualiza tu información personal, contraseña y preferencias de notificación.</p>
+                <form class="space-y-4">
+                    <label class="block">
+                        <span class="text-gray-700">Nombre Completo:</span>
+                        <input type="text" value="Nombre del Tutor" class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-secondary-color focus:border-secondary-color transition-colors text-tertiary-color2">
+                    </label>
+                    <label class="block">
+                        <span class="text-gray-700">Biografía:</span>
+                        <textarea class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-secondary-color focus:border-secondary-color transition-colors text-tertiary-color2" rows="3">Profesor con 10 años de experiencia...</textarea>
+                    </label>
+                    <button type="submit" class="bg-secondary-color text-white px-4 py-2 rounded-xl hover:bg-secondary-color/90 transition-colors font-semibold">Guardar Cambios</button>
+                </form>
+            </div>`}
+        };
+
+        function renderView(viewName) {
+            const view = views[viewName] || views['resumen'];
+            document.getElementById('view-title').textContent = view.title;
+            const container = document.getElementById('content-container');
+            
+            // Reemplaza el contenido, renderiza los íconos de Lucide
+            container.innerHTML = view.html;
+
+            // Actualiza los enlaces activos en el sidebar
+            document.querySelectorAll('.sidebar-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const activeLink = document.querySelector(`.sidebar-item[data-view="${viewName}"]`);
+            if (activeLink) {
+                activeLink.classList.add('active');
+            }
+
+            // Renderiza los nuevos íconos de Lucide en el contenido inyectado
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+
+            // Cargar gráfico de ejemplo si estamos en la vista de resumen
+            if (viewName === 'resumen') {
+                createMonthlyChart();
+            }
+            
+            // Sincroniza los nombres del tutor
+            const tutorName = document.getElementById('tutor-name-display').textContent;
+            document.getElementById('tutor-name-dropdown').textContent = tutorName;
+            document.getElementById('tutor-name-summary').textContent = tutorName;
+        }
+
+        function handleHashChange() {
+            const hash = window.location.hash.replace('#', '');
+            renderView(hash);
+        }
+
+        // Lógica de Gráficos (Chart.js)
+        function createMonthlyChart() {
+            const ctx = document.getElementById('monthly-chart');
+            if (ctx) {
+                 // Destruir la instancia anterior si existe
+                if (window.monthlyChartInstance) {
+                    window.monthlyChartInstance.destroy();
+                }
+
+                window.monthlyChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul'],
+                        datasets: [{
+                            label: 'Clases Impartidas',
+                            data: [12, 19, 3, 5, 2, 3, 15],
+                            borderColor: 'var(--secondary-color2)',
+                            backgroundColor: 'rgba(33, 158, 188, 0.2)',
+                            tension: 0.4,
+                            fill: true,
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Lógica de Búsqueda Rápida (Ejemplo simple)
+        const searchableViews = [
+            { name: 'Resumen Académico', hash: '#resumen', keywords: 'dashboard resumen académico estadísticas' },
+            { name: 'Gestión de Reservas', hash: '#reservas', keywords: 'reservas clases calendario disponibilidad' },
+            { name: 'Materias Asignadas', hash: '#materias', keywords: 'materias asignadas especialización temas' },
+            { name: 'Historial de Clases', hash: '#historial', keywords: 'historial clases pasadas valoración notas' },
+            { name: 'Gestión de Pagos', hash: '#pagos', keywords: 'pagos ingresos retiros saldo' },
+            { name: 'Ajustes y Perfil', hash: '#ajustes', keywords: 'ajustes perfil cuenta configuración' },
+        ];
+
+        function quickSearch() {
+            const query = document.getElementById('search-input-modal').value.toLowerCase();
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+
+            if (query.length < 2) {
+                resultsContainer.innerHTML = '<p class="text-gray-500 text-sm">Empieza a escribir para buscar secciones del panel...</p>';
+                return;
+            }
+
+            const filteredResults = searchableViews.filter(view => 
+                view.name.toLowerCase().includes(query) || view.keywords.includes(query)
+            );
+
+            if (filteredResults.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-gray-500 text-sm">No se encontraron resultados.</p>';
+                return;
+            }
+
+            filteredResults.forEach(result => {
+                const link = document.createElement('a');
+                link.href = result.hash;
+                link.textContent = result.name;
+                link.className = 'block p-3 rounded-lg hover:bg-secondary-color/10 text-tertiary-color2 font-medium transition-colors';
+                link.onclick = () => {
+                    handleHashChange();
+                    closeSearchModal();
+                };
+                resultsContainer.appendChild(link);
+            });
+        }
+
+        // --- Event Listeners y Inicialización ---
+        window.addEventListener('hashchange', handleHashChange);
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            // Inicializa Firebase y autenticación
+            if (typeof initializeAndAuthenticate === 'function') {
+                initializeAndAuthenticate();
+            }
+
+            // Toggle de la barra lateral
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            const toggleButton = document.getElementById('sidebar-toggle');
+            const linkTexts = document.querySelectorAll('.link-text');
+            const logoText = document.querySelector('.logo-text');
+
+            toggleButton.addEventListener('click', () => {
+                const isCollapsed = sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('collapsed', isCollapsed);
+                toggleButton.querySelector('i').setAttribute('data-lucide', isCollapsed ? 'chevrons-right' : 'chevrons-left');
+                logoText.classList.toggle('hidden', isCollapsed);
+
+                linkTexts.forEach(span => {
+                    span.classList.toggle('hidden', isCollapsed);
+                });
+
+                // Renderiza los íconos de Lucide nuevamente para actualizar el botón de toggle
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+
+            // Toggle del menú de perfil
+            const profileDropdown = document.getElementById('profile-dropdown');
+            const btnToggleProfile = document.getElementById('btn-toggle-profile');
+
+            btnToggleProfile.addEventListener('click', (e) => {
+                e.stopPropagation(); // Evita que se cierre inmediatamente por el listener de document
+                const isHidden = profileDropdown.classList.contains('hidden');
+                
+                if (isHidden) {
+                    profileDropdown.classList.remove('hidden');
+                    // Muestra el dropdown con animación
+                    setTimeout(() => {
+                        profileDropdown.classList.remove('opacity-0', 'translate-y-2');
+                    }, 10);
+                } else {
+                    // Oculta el dropdown con animación
+                    profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => {
+                        profileDropdown.classList.add('hidden');
+                    }, 200); // Tiempo para que termine la transición
+                }
+            });
+
+            // Cierra el dropdown al hacer clic fuera
+            document.addEventListener('click', (e) => {
+                if (!btnToggleProfile.contains(e.target) && !profileDropdown.contains(e.target) && !profileDropdown.classList.contains('hidden')) {
+                     profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                     setTimeout(() => {
+                        profileDropdown.classList.add('hidden');
+                    }, 200);
+                }
+            });
+
+            // Manejo de Desconexión (simulación de assets/js/Ajustes/Usuario.js)
+            document.getElementById('btn-desconectar-sidebar').addEventListener('click', (e) => {
+                e.preventDefault();
+                if (window.Usuario && window.Usuario.handleLogout) {
+                    window.Usuario.handleLogout();
+                } else {
+                    alertMessage("Función de desconexión no inicializada.", "error");
+                }
+            });
+            document.getElementById('btn-desconectar-dropdown').addEventListener('click', (e) => {
+                e.preventDefault();
+                 if (window.Usuario && window.Usuario.handleLogout) {
+                    window.Usuario.handleLogout();
+                    // Oculta el dropdown después de la acción
+                    profileDropdown.classList.add('opacity-0', 'translate-y-2', 'hidden');
+                } else {
+                    alertMessage("Función de desconexión no inicializada.", "error");
+                }
+            });
+            
+            // Inicia en la vista correcta basada en el hash o en Resumen Académico por defecto
+            handleHashChange();
+
+            // Lógica de navegación con teclado para el modal de búsqueda (opcional pero mejora UX)
+            document.addEventListener('keydown', (e) => {
+                // Ctrl+K o Cmd+K para abrir búsqueda
+                if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    openSearchModal();
+                }
+                // Escape para cerrar cualquier modal
+                if (e.key === 'Escape') {
+                    const activeModals = document.querySelectorAll('.modal:not(.hidden)');
+                    activeModals.forEach(modal => {
+                        modal.classList.add('hidden');
+                    });
+                }
+            });
+            
+            // Renderiza los íconos de Lucide en toda la página
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+        
+    </script>
+</body>
+</html>

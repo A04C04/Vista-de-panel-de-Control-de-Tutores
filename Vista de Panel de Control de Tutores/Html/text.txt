@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClassGo! - Panel de Control Tutores</title>
+    <!-- Incluye Tailwind CSS CDN para un diseño moderno y responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluye Lucide Icons (modernos) y Font Awesome (para compatibilidad) -->
+    <script src="https://unpkg.com/lucide@latest"></script> 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <style>
+        /* Configuración de colores personalizada para Tailwind */
+        :root {
+            --primary-dark: #023047; /* Azul Oscuro (Barra lateral, texto principal) */
+            --secondary-blue: #219EBC; /* Azul Principal (Acentos, activo) */
+            --accent-orange: #FB8500; /* Naranja (Botones de acción) */
+            --background-light: #f4f7f6; /* Fondo de la sección de contenido */
+        }
+        
+        /* Aplica las variables de color a Tailwind */
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-dark': 'var(--primary-dark)',
+                        'secondary-blue': 'var(--secondary-blue)',
+                        'accent-orange': 'var(--accent-orange)',
+                        'bg-light': 'var(--background-light)',
+                    },
+                    spacing: {
+                        'sidebar-w': '280px', /* Ancho fijo para la barra lateral en desktop */
+                    }
+                }
+            }
+        }
+        
+        /* Estilos personalizados para la barra lateral y la vista */
+        .nav-link {
+            transition: all 0.2s ease-in-out;
+        }
+        .nav-link.active {
+            background-color: rgba(33, 158, 188, 0.1); /* secondary-blue con transparencia */
+            color: var(--secondary-blue);
+            border-right: 4px solid var(--secondary-blue);
+            font-weight: 600;
+        }
+
+        /* Ocultar el scrollbar solo para fines estéticos si no es necesario */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+
+        /* Transiciones para las vistas de contenido */
+        .view-content {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+        .view-hidden {
+            opacity: 0;
+            transform: translateY(10px);
+            pointer-events: none; /* Deshabilita interacciones cuando está oculto */
+        }
+
+        /* Estilo para items de currículum */
+        .highlight-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-bg-light min-h-screen antialiased">
+
+    <!-- Estructura Principal del Dashboard -->
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- Sidebar / Menú Lateral -->
+        <aside id="sidebar" class="hidden md:flex flex-col w-sidebar-w bg-primary-dark text-white p-5 space-y-6 shadow-xl transition-transform duration-300 ease-in-out">
+            <!-- Logo -->
+            <div class="flex items-center justify-center p-2">
+                <!-- Usamos un placeholder de texto para el logo -->
+                <h1 class="text-2xl font-bold text-accent-orange">ClassGo! Tutor</h1>
+            </div>
+
+            <!-- Navegación Principal -->
+            <nav class="flex-grow space-y-2">
+                <a href="#reservas" data-view="mis-reservas" data-title="Mis Reservas" class="nav-link flex items-center p-3 rounded-lg hover:bg-secondary-blue/20">
+                    <i data-lucide="calendar" class="w-5 h-5 mr-3"></i>
+                    <span>Mis Reservas</span>
+                </a>
+                <a href="#ganancias" data-view="mis-ganancias" data-title="Mis Ganancias" class="nav-link flex items-center p-3 rounded-lg hover:bg-secondary-blue/20">
+                    <i data-lucide="dollar-sign" class="w-5 h-5 mr-3"></i>
+                    <span>Mis Ganancias</span>
+                </a>
+                <a href="#perfil" data-view="mi-perfil" data-title="Mi Perfil y Currículum" class="nav-link flex items-center p-3 rounded-lg hover:bg-secondary-blue/20">
+                    <i data-lucide="user" class="w-5 h-5 mr-3"></i>
+                    <span>Mi Perfil</span>
+                </a>
+                <a href="#disponibilidad" data-view="mi-disponibilidad" data-title="Ajustar Disponibilidad" class="nav-link flex items-center p-3 rounded-lg hover:bg-secondary-blue/20">
+                    <i data-lucide="clock" class="w-5 h-5 mr-3"></i>
+                    <span>Disponibilidad</span>
+                </a>
+            </nav>
+
+            <!-- Botón de Desconexión (Parte Inferior) -->
+            <div class="pt-4 border-t border-white/20">
+                <button id="btn-desconectar-sidebar" class="w-full flex items-center justify-center p-3 rounded-lg bg-accent-orange hover:bg-orange-700 transition duration-150 font-semibold">
+                    <i data-lucide="log-out" class="w-5 h-5 mr-2"></i>
+                    <span>Desconectar</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="flex-1 flex flex-col overflow-y-auto">
+
+            <!-- Navbar Superior (para Título y Perfil) -->
+            <header class="sticky top-0 z-10 bg-white shadow-md p-4 flex items-center justify-between">
+                <div class="flex items-center">
+                    <!-- Botón para Sidebar en Móviles -->
+                    <button id="btn-toggle-sidebar-mobile" class="md:hidden p-2 rounded-full hover:bg-gray-100 mr-3 text-primary-dark">
+                        <i data-lucide="menu" class="w-6 h-6"></i>
+                    </button>
+                    <!-- Título de la Vista Actual -->
+                    <h2 id="view-title" class="text-xl md:text-2xl font-bold text-primary-dark">Panel de Control Tutor</h2>
+                </div>
+                
+                <!-- Menú de Perfil (Dropdown) -->
+                <div class="relative">
+                    <button id="btn-toggle-profile" class="flex items-center p-2 rounded-full bg-secondary-blue text-white hover:opacity-90 transition">
+                        <i data-lucide="user" class="w-6 h-6"></i>
+                    </button>
+
+                    <!-- Dropdown -->
+                    <div id="profile-dropdown" class="absolute right-0 mt-3 w-48 bg-white rounded-lg shadow-xl z-20 hidden opacity-0 translate-y-2 transition duration-200 ease-out">
+                        <a href="#perfil" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-lg" onclick="document.getElementById('profile-dropdown').classList.add('hidden')">
+                            <i data-lucide="settings" class="w-4 h-4 mr-2 inline-block"></i> Ajustes
+                        </a>
+                        <button id="btn-desconectar-dropdown" class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-b-lg">
+                            <i data-lucide="log-out" class="w-4 h-4 mr-2 inline-block"></i> Desconectar
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Contenedor de Vistas (Secciones) -->
+            <div id="content-views" class="p-4 md:p-8 space-y-6 flex-1">
+                
+                <!-- 1. MIS RESERVAS (Reservations) -->
+                <section id="mis-reservas" class="view-content view-hidden bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-semibold mb-4 text-primary-dark border-b pb-2">Próximas Reservas</h3>
+                    <div class="bg-indigo-50 border-l-4 border-indigo-500 text-indigo-700 p-4 mb-6 rounded-lg" role="alert">
+                        <p class="font-bold">Información Importante</p>
+                        <p>Las reservas se basan en tu disponibilidad configurada en la sección 'Disponibilidad'.</p>
+                    </div>
+                    
+                    <!-- Tabla de Reservas -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estudiante</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asignatura</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr class="hover:bg-gray-50 transition duration-150">
+                                    <td class="px-6 py-4 whitespace-nowrap">23 de Enero</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">14:00 - 15:00</td>
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">Ana P.</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">Matemáticas Avanzadas</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Confirmada</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap">24 de Enero</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">10:00 - 11:00</td>
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">Carlos R.</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">Física Moderna</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pendiente</span>
+                                    </td>
+                                </tr>
+                                <!-- Más reservas aquí -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- 2. MIS GANANCIAS (Earnings and Payment Settings) -->
+                <section id="mis-ganancias" class="view-content view-hidden bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-semibold mb-4 text-primary-dark border-b pb-2">Ajustes de Ganancias y Pagos</h3>
+                    
+                    <!-- Configuración de Precio -->
+                    <div class="mb-8 p-6 border rounded-lg bg-gray-50">
+                        <h4 class="text-xl font-medium mb-3 text-secondary-blue flex items-center"><i data-lucide="badge-dollar-sign" class="w-5 h-5 mr-2"></i> Tarifa por Tutoría</h4>
+                        <label for="price" class="block text-gray-600 mb-2">¿Cuánto deseas cobrar por tutoría? (Ej. 200,00 BOB)</label>
+                        <div class="flex space-x-3">
+                            <input type="text" id="price" value="200.00" class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-secondary-blue focus:border-secondary-blue">
+                            <button class="px-4 py-2 bg-accent-orange text-white rounded-lg hover:bg-orange-700 transition font-semibold">Guardar Tarifa</button>
+                        </div>
+                    </div>
+
+                    <!-- Métodos de Pago -->
+                    <div class="payment-methods">
+                        <h4 class="text-xl font-medium mb-4 text-primary-dark border-b pb-2">Métodos de Pago</h4>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            
+                            <!-- Tarjeta de Transferencia Bancaria -->
+                            <div class="p-6 border rounded-xl shadow-md bg-white">
+                                <div class="flex items-center mb-3">
+                                    <div class="p-3 bg-secondary-blue/10 rounded-full text-secondary-blue">
+                                        <!-- Icono de Transferencia Bancaria (usando Font Awesome) -->
+                                        <i class="fas fa-random" style="font-size: 24px;"></i>
+                                    </div>
+                                    <h5 class="text-lg font-semibold ml-4">Transferencia Bancaria</h5>
+                                </div>
+                                <p class="text-sm text-gray-500 mb-4">Configura tu cuenta bancaria para recibir pagos directos y sin comisiones.</p>
+                                <button class="w-full py-2 bg-secondary-blue text-white rounded-lg hover:bg-secondary-blue/80 transition font-semibold">Configurar Cuenta</button>
+                            </div>
+
+                            <!-- Tarjeta de Pago con QR -->
+                            <div class="p-6 border rounded-xl shadow-md bg-white">
+                                <div class="flex items-center mb-3">
+                                    <div class="p-3 bg-accent-orange/10 rounded-full text-accent-orange">
+                                        <!-- Icono de QR (usando Font Awesome) -->
+                                        <i class="fas fa-qrcode" style="font-size: 24px;"></i>
+                                    </div>
+                                    <h5 class="text-lg font-semibold ml-4">Pago con QR</h5>
+                                </div>
+                                <p class="text-sm text-gray-500 mb-4">Permite pagos rápidos y directos a través de un código QR personalizado.</p>
+                                <div class="flex space-x-2">
+                                    <button class="flex-1 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition font-semibold">Gestionar QR</button>
+                                    <button class="flex-1 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-semibold">Eliminar Cuenta</button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. MI PERFIL Y CURRÍCULUM -->
+                <section id="mi-perfil" class="view-content view-hidden bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-semibold mb-4 text-primary-dark border-b pb-2">Ajustes de Perfil</h3>
+
+                    <!-- Video de Presentación -->
+                    <div class="mb-8 p-6 border rounded-lg bg-gray-50">
+                        <h4 class="text-xl font-medium mb-3 text-secondary-blue flex items-center"><i data-lucide="video" class="w-5 h-5 mr-2"></i> Video de Presentación</h4>
+                        <p class="text-sm text-gray-600 mb-4">Sube un video corto para que los estudiantes te conozcan mejor. (Máx. 30 segundos)</p>
+                        
+                        <input type="file" id="video-upload" accept="video/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-secondary-blue/10 file:text-secondary-blue hover:file:bg-secondary-blue/20">
+
+                        <div id="video-preview" class="mt-4 p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-500">
+                            <!-- El video se cargará aquí -->
+                            <i data-lucide="upload" class="w-6 h-6 mx-auto mb-2"></i>
+                            Previsualización de video (ningún archivo seleccionado)
+                        </div>
+                    </div>
+
+                    <!-- Aspectos Destacados del Currículum -->
+                    <div class="p-6 border rounded-lg bg-white shadow-md">
+                        <h4 class="text-xl font-medium mb-3 text-primary-dark flex items-center"><i data-lucide="star" class="w-5 h-5 mr-2"></i> Aspectos Destacados (CV)</h4>
+                        <p class="text-sm text-gray-600 mb-4">Añade logros, certificaciones o habilidades clave que quieres mostrar.</p>
+                        
+                        <!-- Formulario para añadir destacado -->
+                        <div class="flex space-x-3 mb-4">
+                            <input type="text" id="new-highlight" placeholder="Ej: Certificado en enseñanza online" class="flex-grow p-2 border border-gray-300 rounded-lg focus:ring-secondary-blue focus:border-secondary-blue">
+                            <button onclick="addHighlight()" class="px-4 py-2 bg-secondary-blue text-white rounded-lg hover:bg-secondary-blue/80 transition font-semibold">Añadir</button>
+                        </div>
+                        
+                        <!-- Lista de Aspectos Destacados -->
+                        <div id="highlights-list" class="space-y-2">
+                            <div class="highlight-item">
+                                <span style="flex-grow: 1;">Experiencia de 5 años en tutorías universitarias</span>
+                                <button style="background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;" onclick="this.parentElement.remove()">Eliminar</button>
+                            </div>
+                            <!-- Los nuevos elementos se añadirán aquí -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. MI DISPONIBILIDAD (Availability Settings) -->
+                <section id="mi-disponibilidad" class="view-content view-hidden bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-semibold mb-4 text-primary-dark border-b pb-2">Ajustar Disponibilidad Horaria</h3>
+
+                    <p class="text-gray-600 mb-6">Marca los días en los que estás disponible y establece los rangos de tiempo.</p>
+
+                    <!-- Tabla de Disponibilidad -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Día</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Disponible</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora Inicio</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Hora Fin</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200 text-sm">
+                                <!-- Lunes -->
+                                <tr class="day-row bg-white hover:bg-gray-50 transition duration-150">
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">Lunes</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <input type="checkbox" id="lunes-check" checked class="form-checkbox h-5 w-5 text-secondary-blue rounded focus:ring-secondary-blue">
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="08:00">08:00</option>
+                                            <option value="09:00" selected>09:00</option>
+                                            <option value="10:00">10:00</option>
+                                            <!-- Más horas -->
+                                        </select>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="17:00" selected>17:00</option>
+                                            <option value="18:00">18:00</option>
+                                            <option value="19:00">19:00</option>
+                                            <!-- Más horas -->
+                                        </select>
+                                    </td>
+                                </tr>
+                                <!-- Martes (Ejemplo no disponible por defecto) -->
+                                <tr class="day-row bg-gray-100 hover:bg-gray-200 transition duration-150">
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">Martes</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <input type="checkbox" id="martes-check" class="form-checkbox h-5 w-5 text-secondary-blue rounded focus:ring-secondary-blue">
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select disabled class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="">-- No Disponible --</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select disabled class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="">-- No Disponible --</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                                <!-- Puedes añadir el resto de días aquí... -->
+                                <!-- Miércoles -->
+                                <tr class="day-row bg-white hover:bg-gray-50 transition duration-150">
+                                    <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">Miércoles</td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <input type="checkbox" id="miercoles-check" checked class="form-checkbox h-5 w-5 text-secondary-blue rounded focus:ring-secondary-blue">
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="15:00" selected>15:00</option>
+                                            <!-- Más horas -->
+                                        </select>
+                                    </td>
+                                    <td class="px-6 py-4 whitespace-nowrap">
+                                        <select class="time-select p-2 border border-gray-300 rounded-lg">
+                                            <option value="20:00" selected>20:00</option>
+                                            <!-- Más horas -->
+                                        </select>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="mt-6 text-right">
+                        <button class="px-6 py-3 bg-accent-orange text-white rounded-xl hover:bg-orange-700 transition font-bold shadow-lg">Guardar Disponibilidad</button>
+                    </div>
+
+                </section>
+
+                <!-- Overlay para el menú móvil -->
+                <div id="mobile-menu-overlay" class="fixed inset-0 bg-black/50 z-20 hidden md:hidden"></div>
+                
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // --- 1. MOCK DE AUTENTICACIÓN / FUNCIONALIDAD ---
+        // Se simula la existencia de un objeto 'Usuario' para el manejo de desconexión.
+        // En una aplicación real, esto manejaría la lógica de Firebase o tu backend.
+        const Usuario = {
+            handleLogout: () => {
+                alert('¡Has sido desconectado! (Simulación)');
+                // Aquí iría la lógica de signOut(auth) y redirección
+            }
+        };
+
+        // --- 2. LÓGICA DE NAVEGACIÓN Y VISTAS (SPA - Single Page Application) ---
+
+        /**
+         * Cambia la vista activa del dashboard.
+         * @param {string} viewId - El ID de la sección a mostrar (ej: 'mis-reservas').
+         * @param {string} title - El título a mostrar en el encabezado.
+         */
+        function navigateTo(viewId, title) {
+            const views = document.querySelectorAll('.view-content');
+            const navLinks = document.querySelectorAll('.nav-link');
+            const viewTitle = document.getElementById('view-title');
+
+            // Actualizar el título
+            viewTitle.textContent = title;
+            
+            // Ocultar todas las vistas con animación
+            views.forEach(view => {
+                view.classList.add('view-hidden');
+                view.classList.remove('block');
+            });
+            
+            // Mostrar la vista seleccionada con animación
+            setTimeout(() => {
+                const activeView = document.getElementById(viewId);
+                if (activeView) {
+                    activeView.classList.remove('view-hidden');
+                    activeView.classList.add('block'); // Asegura que se muestre
+                    // Forzar el redibujado para que la transición funcione
+                    activeView.offsetWidth; 
+                    activeView.style.opacity = 1;
+                    activeView.style.transform = 'translateY(0)';
+                }
+            }, 300); // 300ms de retraso para que la animación de ocultar termine
+
+            // Actualizar el estado activo de los enlaces de navegación
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('data-view') === viewId) {
+                    link.classList.add('active');
+                }
+            });
+
+             // Ocultar la barra lateral en móvil después de la navegación
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-menu-overlay');
+            if (sidebar.classList.contains('translate-x-0')) {
+                 sidebar.classList.remove('translate-x-0');
+                 sidebar.classList.add('-translate-x-full');
+                 overlay.classList.add('hidden');
+            }
+        }
+
+        // Manejar el cambio de hash en la URL
+        function handleHashChange() {
+            const hash = window.location.hash.substring(1); // Obtiene el hash sin el '#'
+            let viewId = 'mis-reservas'; // Vista por defecto
+            let title = 'Mis Reservas'; // Título por defecto
+
+            if (hash) {
+                const activeLink = document.querySelector(`.nav-link[href="#${hash}"]`);
+                if (activeLink) {
+                    viewId = activeLink.getAttribute('data-view');
+                    title = activeLink.getAttribute('data-title');
+                }
+            }
+            navigateTo(viewId, title);
+        }
+
+        // Escuchar el evento de cambio de hash
+        window.addEventListener('hashchange', handleHashChange);
+
+
+        // --- 3. LÓGICA ESPECÍFICA DE COMPONENTES ---
+
+        // 3.1. Funcionalidad de Aspectos Destacados del Currículum (Mi Perfil)
+        function addHighlight() {
+            const input = document.getElementById('new-highlight');
+            const list = document.getElementById('highlights-list');
+            const text = input.value.trim();
+            
+            if (text) {
+                const newItem = document.createElement('div');
+                newItem.className = 'highlight-item';
+                // Usamos innerHTML con estilos inline para el botón de eliminar
+                newItem.innerHTML = `
+                    <span style="flex-grow: 1;">${text}</span>
+                    <button style="background-color: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 12px;" onclick="this.parentElement.remove()">Eliminar</button>
+                `;
+                list.appendChild(newItem);
+                input.value = ''; // Limpiar el input
+            } else {
+                console.warn("El campo de aspecto destacado está vacío.");
+            }
+        }
+        // Hacer la función addHighlight globalmente accesible
+        window.addHighlight = addHighlight;
+
+
+        // 3.2. Funcionalidad de Disponibilidad (Mi Disponibilidad)
+        function populateTimeSelect(select, isEnabled) {
+             // Lista de horas simplificada para el ejemplo
+            const hours = [
+                '07:00', '08:00', '09:00', '10:00', '11:00', '12:00',
+                '13:00', '14:00', '15:00', '16:00', '17:00', '18:00',
+                '19:00', '20:00', '21:00', '22:00'
+            ];
+
+            select.innerHTML = ''; // Limpiar opciones
+
+            if (!isEnabled) {
+                 select.innerHTML = `<option value="">-- No Disponible --</option>`;
+                 return;
+            }
+
+            // Crear opciones de hora
+            hours.forEach(hour => {
+                const option = document.createElement('option');
+                option.value = hour;
+                option.textContent = hour;
+                // Simulación: seleccionar una hora por defecto
+                if (select.closest('tr').querySelector('input[type="checkbox"]').id === 'lunes-check' && select.parentElement.previousElementSibling.querySelector('select') === select && hour === '09:00') {
+                    option.selected = true;
+                } else if (select.closest('tr').querySelector('input[type="checkbox"]').id === 'lunes-check' && hour === '17:00') {
+                     option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        }
+        
+        // 3.3. Funcionalidad de Video de Presentación (Mi Perfil)
+        document.addEventListener('DOMContentLoaded', () => {
+             const videoUpload = document.getElementById('video-upload');
+             const videoPreview = document.getElementById('video-preview');
+
+             videoUpload.addEventListener('change', (event) => {
+                 const file = event.target.files[0];
+                 
+                 if (!file) {
+                     videoPreview.innerHTML = `<i data-lucide="upload" class="w-6 h-6 mx-auto mb-2"></i> Previsualización de video (ningún archivo seleccionado)`;
+                     lucide.createIcons();
+                     return;
+                 }
+
+                 if (file.type.startsWith('video/')) {
+                     const fileURL = URL.createObjectURL(file);
+                     
+                     // Crear un elemento de video para la previsualización
+                     const videoElement = document.createElement('video');
+                     videoElement.src = fileURL;
+                     videoElement.controls = true;
+                     videoElement.className = 'w-full h-auto max-h-64 rounded-lg shadow-md mt-2';
+                     
+                     // Limpiar y añadir la previsualización
+                     videoPreview.innerHTML = '';
+                     videoPreview.classList.remove('border-dashed', 'text-gray-500');
+                     videoPreview.classList.add('border-solid', 'p-0');
+                     videoPreview.appendChild(videoElement);
+                     
+                 } else {
+                     videoPreview.innerHTML = `<p class='text-center text-red-500'>⚠️ Archivo no válido. Por favor, sube un archivo de video.</p>`;
+                     videoPreview.classList.add('border-dashed');
+                 }
+             });
+         });
+        
+        // --- 4. INICIALIZACIÓN DE LA PÁGINA ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // 4.1. Lógica de los Checkboxes de Disponibilidad (Disponibilidad)
+            document.querySelectorAll('.day-row input[type="checkbox"]').forEach(checkbox => {
+                const row = checkbox.closest('.day-row');
+                const selects = row.querySelectorAll('.time-select');
+                const isInitialChecked = checkbox.checked;
+
+                // Inicializar selectores al cargar
+                selects.forEach(select => {
+                    select.disabled = !isInitialChecked;
+                    populateTimeSelect(select, isInitialChecked);
+                });
+                row.classList.toggle('bg-gray-100', !isInitialChecked);
+                row.classList.toggle('bg-white', isInitialChecked);
+
+
+                checkbox.addEventListener('change', function() {
+                    const isChecked = this.checked;
+
+                    selects.forEach(select => {
+                        select.disabled = !isChecked;
+                        // Rellena las opciones del select en función de si está disponible
+                        populateTimeSelect(select, isChecked);
+                    });
+
+                    // Actualiza el estilo de la fila
+                    row.classList.toggle('bg-gray-100', !isChecked);
+                    row.classList.toggle('bg-white', isChecked);
+                    row.classList.toggle('hover:bg-gray-200', !isChecked);
+                    row.classList.toggle('hover:bg-gray-50', isChecked);
+                });
+            });
+
+            // 4.2. Toggle del menú de perfil (Dropdown superior)
+            const profileDropdown = document.getElementById('profile-dropdown');
+            const btnToggleProfile = document.getElementById('btn-toggle-profile');
+
+            btnToggleProfile.addEventListener('click', () => {
+                const isHidden = profileDropdown.classList.contains('hidden');
+                
+                if (isHidden) {
+                    profileDropdown.classList.remove('hidden');
+                    // Muestra el dropdown con animación
+                    setTimeout(() => {
+                        profileDropdown.classList.remove('opacity-0', 'translate-y-2');
+                    }, 10);
+                } else {
+                    // Oculta el dropdown con animación
+                    profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => {
+                         profileDropdown.classList.add('hidden');
+                    }, 200); // Coincide con la duración de la transición
+                }
+            });
+            
+            // 4.3. Toggle del menú lateral en móviles
+            const sidebar = document.getElementById('sidebar');
+            const btnToggleMobile = document.getElementById('btn-toggle-sidebar-mobile');
+            const overlay = document.getElementById('mobile-menu-overlay');
+
+            sidebar.classList.add('-translate-x-full'); // Estado inicial oculto en móvil
+
+            btnToggleMobile.addEventListener('click', () => {
+                sidebar.classList.toggle('-translate-x-full');
+                sidebar.classList.toggle('translate-x-0');
+                overlay.classList.toggle('hidden');
+            });
+            
+            overlay.addEventListener('click', () => {
+                sidebar.classList.add('-translate-x-full');
+                sidebar.classList.remove('translate-x-0');
+                overlay.classList.add('hidden');
+            });
+
+
+            // 4.4. Manejo de Desconexión (usando el mock 'Usuario')
+            document.getElementById('btn-desconectar-sidebar').addEventListener('click', Usuario.handleLogout);
+            document.getElementById('btn-desconectar-dropdown').addEventListener('click', Usuario.handleLogout);
+            
+            // 4.5. Inicia en la vista correcta basada en el hash o en Mis Reservas por defecto
+            handleHashChange();
+
+            // 4.6. Renderiza los íconos de Lucide en toda la página
+            setTimeout(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                } else {
+                    console.warn("Lucide Icons no se cargó correctamente.");
+                }
+            }, 100); 
+        });
+        
+    </script>
+</body>
+</html>

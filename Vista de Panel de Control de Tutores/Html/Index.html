@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control del Tutor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Inicialización de variables globales
+        let app, db, auth, userId = 'default-user';
+        // Estas variables DEBEN ser definidas en el entorno de ejecución (ej. variables de entorno)
+        // Se usan valores de prueba para evitar errores de referencia si no están definidas.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ?
+            JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Log de depuración para Firestore (puede eliminarse en producción)
+        // setLogLevel('debug'); 
+
+        // Función de inicialización y autenticación
+        async function initializeAndAuthenticate() {
+            if (!firebaseConfig) {
+                console.error("Firebase configuration is missing.");
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Usuario autenticado. UID:", userId);
+                        // document.getElementById('user-id-display').textContent = userId; // Comentado, no existe en HTML
+                        // Inicia la carga de datos y listeners una vez autenticado
+                        loadInitialData(userId);
+                    } else {
+                        userId = 'anonymous';
+                        console.log("Usuario anónimo o desautenticado.");
+                        // document.getElementById('user-id-display').textContent = 'Anónimo'; // Comentado, no existe en HTML
+                        loadInitialData(userId);
+                    }
+                });
+            } catch (error) {
+                console.error("Error en la inicialización o autenticación de Firebase:", error);
+            }
+        }
+
+        // Simulación de módulo de usuario para desconexión
+        const Usuario = {
+            handleLogout: async () => {
+                try {
+                    await signOut(auth);
+                    console.log("Sesión cerrada con éxito.");
+                    alertMessage('Sesión cerrada con éxito.', 'success');
+                    // Opcional: Redirigir o actualizar la UI
+                } catch (error) {
+                    console.error("Error al cerrar sesión:", error);
+                    alertMessage('Error al cerrar sesión.', 'error');
+                }
+            }
+        };
+
+        // Función para cargar datos iniciales (ejemplo)
+        function loadInitialData(currentUserId) {
+            const tutorRef = doc(db, 'artifacts', appId, 'users', currentUserId, 'profile', 'data');
+            
+            // Listener para datos privados del tutor
+            onSnapshot(tutorRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    console.log("Datos del tutor:", data);
+                    const nameDisplay = document.getElementById('tutor-name-display');
+                    if (nameDisplay) {
+                        nameDisplay.textContent = data.name || 'Tutor';
+                    }
+                } else {
+                    console.log("No hay datos de perfil para el tutor, creando inicial.");
+                    setDoc(tutorRef, { name: 'Tutor', bio: 'Bienvenido a tu panel.', lastLogin: new Date().toISOString() }, { merge: true })
+                        .then(() => console.log("Perfil inicial creado."))
+                        .catch(err => console.error("Error al crear perfil:", err));
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en el perfil:", error);
+            });
+            // Una vez que los datos cargan, cambiamos a la vista inicial (ej. dashboard)
+            window.location.hash = window.location.hash || '#dashboard';
+            handleHashChange();
+        }
+
+        // Exportar funciones y variables necesarias para el scope global
+        window.db = db;
+        window.auth = auth;
+        window.Usuario = Usuario;
+        window.initializeAndAuthenticate = initializeAndAuthenticate;
+    </script>
+    
+    <script>
+        // Configuración de Tailwind para usar las variables CSS en las clases
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-color': 'var(--primary-color)',
+                        'secondary-color': 'var(--secondary-color)',
+                        'secondary-color2': 'var(--secondary-color2)',
+                        'tertiary-color': 'var(--tertiary-color)',
+                        'tertiary-color2': 'var(--tertiary-color2)',
+                        'text-light': 'var(--text-light)',
+                        'text-dark': 'var(--text-dark)',
+                        'success': '#10B981', // Verde para éxito
+                        'warning': '#F59E0B', // Amarillo para advertencia
+                        'error': '#EF4444', // Rojo para error
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Definición de la paleta de colores usando CSS Variables */
+        :root {
+            --primary-color: #023047; /* Azul Oscuro (Barra Lateral, Fondo Principal) */
+            --secondary-color: #219EBC; /* Azul Claro/Cian (Botones, Destacados) */
+            --secondary-color2: #CDD6DA; /* Gris Claro (Fondos Secundarios) */
+            --tertiary-color: #8ECAE6; /* Azul Pálido (Hover, Bordes) */
+            --tertiary-color2: #FB8500; /* Naranja (Alertas, Énfasis) */
+            --text-light: #F8F9FA;
+            --text-dark: #1F2937;
+        }
+
+        /* Estilos generales */
+        body {
+            background-color: var(--secondary-color2);
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+        
+        /* Estilos para la barra lateral y navegación */
+        #sidebar {
+            background-color: var(--primary-color);
+        }
+        .nav-button {
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .nav-button:hover {
+            background-color: var(--secondary-color);
+        }
+        .nav-button.active {
+            background-color: var(--tertiary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        /* Estilos específicos para la usabilidad */
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Estilos para el campo de búsqueda global */
+        #search-modal {
+            background-color: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(2px);
+        }
+
+        /* Estilo para el borde naranja del logo */
+        .logo-border {
+            border: 2px solid var(--tertiary-color2);
+            padding: 0.5rem;
+        }
+
+        /* Estilo para los tabs de Reservas */
+        .active-reserva-tab {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            font-weight: 600;
+        }
+        
+        /* Estilo para los tabs de Perfil */
+        .profile-tab.active-profile-tab {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            font-weight: 600;
+        }
+        .profile-tab {
+             transition: color 0.2s, border-bottom 0.2s;
+        }
+
+        /* Estilo para la tarjeta de reserva */
+        .reserva-card {
+            border-left: 5px solid var(--secondary-color);
+            transition: box-shadow 0.3s, transform 0.3s;
+        }
+        .reserva-card.confirmada {
+            border-left-color: var(--success);
+        }
+        .reserva-card.pendiente {
+            border-left-color: var(--warning);
+        }
+        .reserva-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+            transform: translateY(-2px);
+        }
+        
+        /* CSS para el toggle switch de auto-aceptar */
+        .toggle-checkbox {
+            position: absolute;
+            opacity: 0;
+        }
+        .toggle-label {
+            display: block;
+            width: 40px;
+            height: 24px;
+            cursor: pointer;
+            position: relative;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: var(--secondary-color);
+        }
+        .toggle-label:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 90px;
+            transition: all 0.2s ease-in-out;
+        }
+        .toggle-checkbox:checked + .toggle-label:after {
+            transform: translateX(16px);
+        }
+    </style>
+
+    <script>
+    // ----------------------------------------------------------------
+    // 1. Variables Globales y Configuración de Servicios
+    // ----------------------------------------------------------------
+    let currentLanguage = 'es';
+
+    // --- Variables de Estado para Mis Materias ---
+    const MAX_SUBJECTS = 40;
+    // Estado inicial de prueba: 3 materias seleccionadas
+    let selectedSubjectIds = [1, 2, 3]; 
+    
+    // Datos de TODAS las 114 Materias (extraído del subject_groups.pdf)
+    const ALL_SUBJECT_GROUPS = [
+        { id: 1, name: 'Básico' }, { id: 2, name: 'Primaria' }, { id: 3, name: 'Secundaria' },
+        { id: 4, name: 'Ciencias Exactas' }, { id: 5, name: 'Química' }, { id: 6, name: 'Econometría' },
+        { id: 7, name: 'Finanzas' }, { id: 8, name: 'Economía Cuantitativa' }, { id: 9, name: 'Contabilidad' },
+        { id: 10, name: 'Presupuesto y Criptoactivos' }, { id: 11, name: 'Métodos Cuantitativos' },
+        { id: 12, name: 'Gestión de Contenidos Digitales' }, { id: 13, name: 'Gestión de Redes Sociales' },
+        { id: 14, name: 'Community Management' }, { id: 15, name: 'Estrategias de Monetización' },
+        { id: 16, name: 'Edición Multimedia' }, { id: 17, name: 'Diseño y Herramientas Visuales' },
+        { id: 18, name: 'Creación de Contenidos' }, { id: 19, name: 'Producción Audiovisual' },
+        { id: 20, name: 'Publicidad en Facebook Ads' }, { id: 21, name: 'Publicidad en Instagram' },
+        { id: 22, name: 'Publicidad en TikTok' }, { id: 23, name: 'Marketing y Publicidad en YouTube' },
+        { id: 24, name: 'Publicidad en Linkedin para Negocios' }, { id: 25, name: 'Publicidad en Snapchat Ads' },
+        { id: 26, name: 'Optimización de Campañas Publicitarias' }, { id: 27, name: 'Multiplataformas en Redes Sociales' },
+        { id: 28, name: 'Matemática Aplicada a la Ingeniería Ambiental' }, { id: 29, name: 'Estadística' },
+        { id: 30, name: 'Cálculo' }, { id: 31, name: 'Ecuaciones Diferenciales' },
+        { id: 32, name: 'Fundamentos' }, { id: 33, name: 'Métodos Numéricos' }, { id: 34, name: 'Programación' },
+        { id: 35, name: 'Modelado y Simulación de Sistemas' }, { id: 36, name: 'Edición y Diseño' },
+        { id: 37, name: 'Aplicaciones' }, { id: 38, name: 'Técnicas Básicas:' },
+        { id: 39, name: 'Operador de Maquinaria Pesada.' }, { id: 40, name: 'Redes y Conectividad' },
+        { id: 41, name: 'Redes y Comunicaciones' }, { id: 42, name: 'Comunicación' },
+        { id: 43, name: 'Sistemas y Tecnologías de la Información' }, { id: 44, name: 'Bases de Datos' },
+        { id: 45, name: 'Auditoria' }, { id: 46, name: 'Tecnologías Web' }, { id: 47, name: 'Tecnologías Web y Multimedia' },
+        { id: 48, name: 'Computación y Automatización' }, { id: 49, name: 'Diseño Electrónico y Circuitos' },
+        { id: 50, name: 'Herramientas ofimàticas' }, { id: 51, name: 'Diseño de Sistemas Financieros' },
+        { id: 52, name: 'Interpretación y Traducción de Idiomas' }, { id: 53, name: 'Traducción' },
+        { id: 54, name: 'Inglés Profesional Jurídico' }, { id: 55, name: 'Inglés Avanzado (CBA y Otros Institutos)' },
+        { id: 56, name: 'Francés Avanzado' }, { id: 57, name: 'Alemán Avanzado' }, { id: 58, name: 'Español' },
+        { id: 59, name: 'Italiano' }, { id: 60, name: 'Portugués' }, { id: 61, name: 'Ruso' },
+        { id: 62, name: 'Quechua' }, { id: 63, name: 'Aymara' }, { id: 64, name: 'Guarani' },
+        { id: 65, name: 'Oficios Técnicos' }, { id: 66, name: 'Instalación de Redes y Conectividad' },
+        { id: 67, name: 'Fundamentos de Repostería' }, { id: 68, name: 'Ingredientes y Química de Alimentos' },
+        { id: 69, name: 'Técnicas de Repostería' }, { id: 70, name: 'Pastelería Creativa' },
+        { id: 71, name: 'Postres Internacionales' }, { id: 72, name: 'Dietas Especiales y Saludables' },
+        { id: 73, name: 'Gestión de Negocios de Repostería' }, { id: 74, name: 'Seguridad e Higiene en Repostería' },
+        { id: 75, name: 'Psicología General' }, { id: 76, name: 'Psicología del Desarrollo' },
+        { id: 77, name: 'Psicología Clínica' }, { id: 78, name: 'Psicología Educativa' },
+        { id: 79, name: 'Psicología Organizacional' }, { id: 80, name: 'Psicología Social y Comunitaria' },
+        { id: 81, name: 'Psicología Forense' }, { id: 82, name: 'Dibujo y Técnicas Básicas' },
+        { id: 83, name: 'Pintura y Color' }, { id: 84, name: 'Escultura y Modelado' },
+        { id: 85, name: 'Arte y Diseño Gráfico' }, { id: 86, name: 'Historia del Arte' },
+        { id: 87, name: 'Técnicas Experimentales y Nuevas Tendencias' }, { id: 88, name: 'Fundamentos de la Colorimetría' },
+        { id: 89, name: 'Colorimetría Aplicada' }, { id: 90, name: 'Técnicas y Herramientas de Colorimetria' },
+        { id: 91, name: 'Colorimetría en la Industria' }, { id: 92, name: 'Color y Combinación Cromática' },
+        { id: 93, name: 'Publicidad y Branding' }, { id: 94, name: 'Marketing en Redes Sociales' },
+        { id: 95, name: 'Emprendimiento y Gestión de Negocios' }, { id: 96, name: 'Diseño y Comunicación Visual' },
+        { id: 97, name: 'Fotografía Digital y Edición' }, { id: 98, name: 'Creación de Contenido Digital' },
+        { id: 99, name: 'Artes Visuales y Diseño' }, { id: 100, name: 'Expresión Artística y Cultura' },
+        { id: 101, name: 'Filosofía y Desarrollo del Pensamiento' }, { id: 102, name: 'Formación Pedagógica y Didáctica' },
+        { id: 103, name: 'Traducción e Interpretación Profesional' }, { id: 104, name: 'Ingeniería y Medio Ambiente' },
+        { id: 105, name: 'Análisis de Datos y Estadística' }, { id: 106, name: 'Construcción y Mantenimiento' },
+        { id: 107, name: 'Mecánica y Reparaciones' }, { id: 108, name: 'Gastronomía y Reposteria' },
+        { id: 109, name: 'Estética y Moda' }, { id: 110, name: 'Entrenamiento Físico y Bienestar' },
+        { id: 111, name: 'Turismo y Naturaleza' }, { id: 112, name: 'Desarrollo Personal y Espiritualidad' },
+        { id: 113, name: 'Artes Escénicas y Actuación' }, { id: 114, name: 'Diseño y Producción de Videojuegos' }
+    ];
+    // --- Fin Variables de Estado para Mis Materias ---
+    
+    // Mapa de secciones para la búsqueda rápida
+    const sectionMap = [
+        { id: 'dashboard', label: 'Panel de Control / Resumen', keywords: ['dashboard', 'panel', 'inicio', 'ganancias', 'pagos', 'resumen', 'estadísticas'] },
+        { id: 'reservas', label: 'Gestión de Reservas y Disponibilidad', keywords: ['reservas', 'calendario', 'programar', 'disponibilidad', 'citas', 'materias', 'cursos'] },
+        { id: 'historial', label: 'Historial de Tutorías', keywords: ['historial', 'tutorías', 'clases pasadas', 'calificaciones', 'notas', 'evaluación'] },
+        { id: 'pagos', label: 'Gestión de Pagos', keywords: ['pagos', 'ingresos', 'retiros', 'saldo', 'transacciones', 'finanzas'] },
+        { id: 'perfil', label: 'Configuración de Perfil', keywords: ['perfil', 'cuenta', 'ajustes', 'configuración', 'datos personales', 'curriculum'] },
+    ];
+
+
+    // ----------------------------------------------------------------
+    // 2. Funciones de Utilidad (Modales, Gráficos, Alertas)
+    // ----------------------------------------------------------------
+
+    // Mensajes de alerta temporales (reemplaza alert())
+    function alertMessage(message, type = 'success') {
+        const bgColor = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-error' : 'bg-warning';
+        const alertBox = document.createElement('div');
+        alertBox.className = `fixed top-4 right-4 z-[100] p-4 rounded-xl text-text-light ${bgColor} shadow-lg transition-opacity duration-300`;
+        alertBox.textContent = message;
+        document.body.appendChild(alertBox);
+        setTimeout(() => {
+            alertBox.style.opacity = '0';
+            setTimeout(() => alertBox.remove(), 300);
+        }, 3000);
+    }
+    
+    function cleanupCanvas(id) {
+        const oldCanvas = document.getElementById(id);
+        if (!oldCanvas) {
+            // No es un error crítico si el canvas no existe en la vista actual
+            return null; 
+        }
+        const container = oldCanvas.parentElement;
+        oldCanvas.remove(); 
+        
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = id;
+        newCanvas.className = 'h-64'; // Se mantiene la clase de altura
+        container.appendChild(newCanvas);
+        return newCanvas.getContext('2d');
+    }
+
+    function createCharts() {
+        // Horas por Materia
+        const ctxMaterias = cleanupCanvas('chartMaterias');
+        if (ctxMaterias) {
+            new Chart(ctxMaterias, {
+                type: 'bar',
+                data: {
+                    labels: ['Cálculo', 'Álgebra', 'Programación', 'Ecuaciones'],
+                    datasets: [{
+                        label: 'Horas Totales de Tutoría',
+                        data: [10, 8, 15, 6],
+                        backgroundColor: ['#219EBC', '#FB8500', '#8ECAE6', '#023047'],
+                        borderRadius: 8,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Nivel de Satisfacción
+        const ctxSatisfaccion = cleanupCanvas('chartSatisfaccion');
+        if (ctxSatisfaccion) {
+            new Chart(ctxSatisfaccion, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Muy Satisfecho', 'Satisfecho', 'Necesita Mejora'],
+                    datasets: [{
+                        data: [75, 20, 5],
+                        backgroundColor: ['#10B981', '#219EBC', '#FB8500'],
+                        hoverOffset: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+    }
+    
+    // Funciones de control de Modales
+    function openModal(modalId) {
+        document.getElementById(modalId)?.classList.remove('hidden');
+    }
+    function closeModal(modalId) {
+        document.getElementById(modalId)?.classList.add('hidden');
+    }
+    function openSearchModal() {
+        openModal('search-modal');
+        document.getElementById('search-input-modal')?.focus();
+    }
+    function closeSearchModal() {
+        closeModal('search-modal');
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-input-modal').value = '';
+    }
+
+    function configureQR() {
+        // Lógica para configurar y guardar datos de QR
+        // Aquí se simula un guardado
+        alertMessage('Configuración de QR guardada.', 'success');
+        closeModal('qr-modal');
+    }
+
+    // ----------------------------------------------------------------
+    // 3. Navegación y Funcionalidad de Búsqueda
+    // ----------------------------------------------------------------
+    
+    // Lógica para alternar la barra lateral (para vistas móviles)
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.toggle('-translate-x-full');
+        overlay.classList.toggle('hidden');
+    }
+    
+    // Función principal para cambiar de sección
+    function switchSection(sectionId) {
+        // 1. Ocultar todas las secciones de contenido
+        document.querySelectorAll('.content-section').forEach(section => {
+            section.classList.add('hidden');
+        });
+
+        // 2. Mostrar la sección solicitada
+        document.getElementById(sectionId)?.classList.remove('hidden');
+
+        // 3. Quitar el estado activo de todos los botones de navegación
+        document.querySelectorAll('.nav-button').forEach(button => {
+            button.classList.remove('active');
+        });
+
+        // 4. Activar el botón de navegación actual
+        const activeNavButton = document.querySelector(`.nav-button[onclick*="switchSection('${sectionId}')"]`);
+        if (activeNavButton) {
+            activeNavButton.classList.add('active');
+        }
+        
+        // 5. Actualizar el hash de la URL
+        window.history.pushState(null, null, `#${sectionId}`);
+        
+        // 6. Lógica especial de inicialización por sección
+        const viewTitle = document.getElementById('view-title');
+        const sectionData = sectionMap.find(s => s.id === sectionId);
+        if (viewTitle && sectionData) {
+            viewTitle.textContent = sectionData.label;
+        }
+
+        if (sectionId === 'dashboard') {
+            createCharts();
+        } else if (sectionId === 'reservas') {
+             // Por defecto, mostrar Mis Reservas
+             switchReservaTab('mis'); 
+        } else if (sectionId === 'perfil') {
+             // Por defecto, mostrar Detalles
+             switchProfileTab('detalles');
+        }
+        
+        // Cerrar sidebar en móvil después de navegar
+        if (!document.getElementById('sidebar').classList.contains('-translate-x-full')) {
+            toggleSidebar();
+        }
+    }
+
+    // Manejar el cambio de hash de URL (ej. si el usuario usa el botón 'atrás' o carga una URL específica)
+    function handleHashChange() {
+        const hash = window.location.hash.replace('#', '');
+        const sectionId = sectionMap.some(s => s.id === hash) ? hash : 'dashboard';
+        switchSection(sectionId);
+    }
+
+
+    function quickSearch() {
+        const query = document.getElementById('search-input-modal').value.toLowerCase().trim();
+        const resultsContainer = document.getElementById('search-results');
+        resultsContainer.innerHTML = '';
+
+        if (query.length < 2) {
+            resultsContainer.innerHTML = '<p class="text-gray-500 text-sm">Ingresa al menos 2 caracteres para buscar.</p>';
+            return;
+        }
+
+        const filteredResults = sectionMap.filter(section => 
+            section.keywords.some(keyword => keyword.includes(query)) || 
+            section.label.toLowerCase().includes(query)
+        );
+
+        if (filteredResults.length > 0) {
+            filteredResults.forEach(result => {
+                const button = document.createElement('button');
+                button.onclick = () => {
+                    switchSection(result.id);
+                    closeSearchModal();
+                };
+                button.className = 'w-full text-left p-3 rounded-xl hover:bg-tertiary-color transition-colors flex items-center group';
+                button.innerHTML = `
+                    <i data-lucide="${result.id === 'reservas' ? 'calendar-check' : result.id === 'perfil' ? 'user' : result.id === 'pagos' ? 'wallet' : result.id === 'historial' ? 'clock-history' : 'layout-dashboard'}" 
+                       class="w-5 h-5 mr-3 text-primary-color group-hover:text-secondary-color"></i>
+                    <span class="font-medium text-text-dark">${result.label}</span>
+                `;
+                resultsContainer.appendChild(button);
+            });
+            // Recreate Lucide icons for the search results
+            lucide.createIcons(); 
+        } else {
+            resultsContainer.innerHTML = `
+                <div class="p-4 text-center text-gray-500">
+                    No se encontraron resultados para "${query}".
+                </div>
+            `;
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // 4. Lógica de Tabs (Reservas y Perfil)
+    // ----------------------------------------------------------------
+
+    // Función para cambiar entre las pestañas de Reservas
+    function switchReservaTab(tabName) {
+        // 1. Ocultar todos los contenidos de las pestañas
+        document.querySelectorAll('.reserva-tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+
+        // 2. Desactivar el estilo de todos los botones de las pestañas
+        document.querySelectorAll('.reserva-tab').forEach(button => {
+            button.classList.remove('active-reserva-tab');
+            button.classList.add('text-gray-500', 'hover:text-primary-color/80');
+        });
+
+        // 3. Mostrar el contenido de la pestaña actual
+        document.getElementById(`reserva-content-${tabName}`)?.classList.remove('hidden');
+
+        // 4. Activar el estilo del botón de la pestaña actual
+        const activeTabButton = document.getElementById(`reserva-tab-${tabName}`);
+        if (activeTabButton) {
+            activeTabButton.classList.add('active-reserva-tab');
+            activeTabButton.classList.remove('text-gray-500', 'hover:text-primary-color/80');
+        }
+
+        // 5. Llama a la función de renderizado si se activa la pestaña 'materias'
+        if (tabName === 'materias') {
+             const searchInput = document.getElementById('materias-search-input');
+             renderMisMaterias(searchInput ? searchInput.value : '');
+        }
+    }
+    
+    // Función para cambiar entre las pestañas de Perfil
+    function switchProfileTab(tabName) {
+        // 1. Ocultar todos los contenidos de las pestañas de perfil
+        document.querySelectorAll('.profile-tab-content').forEach(content => {
+            content.classList.add('hidden');
+        });
+
+        // 2. Desactivar el estilo de todos los botones de las pestañas de perfil
+        document.querySelectorAll('.profile-tab').forEach(button => {
+            button.classList.remove('active-profile-tab');
+            button.classList.add('text-gray-500', 'hover:text-primary-color/80');
+        });
+
+        // 3. Mostrar el contenido de la pestaña actual
+        document.getElementById(`profile-content-${tabName}`)?.classList.remove('hidden');
+
+        // 4. Activar el estilo del botón de la pestaña actual
+        const activeTabButton = document.getElementById(`profile-tab-${tabName}`);
+        if (activeTabButton) {
+            activeTabButton.classList.add('active-profile-tab');
+            activeTabButton.classList.remove('text-gray-500', 'hover:text-primary-color/80');
+        }
+    }
+
+    function saveNotes() { 
+        alertMessage('Notas autoguardadas.', 'info');
+        // Aquí iría la lógica de guardado real (e.g., Firestore update)
+    } 
+
+    // ----------------------------------------------------------------
+    // 5. LÓGICA DE GESTIÓN DE MATERIAS (COMPLETADA)
+    // ----------------------------------------------------------------
+
+    // Maneja la adición de una materia
+    function handleAddSubject(subjectId) {
+        const id = parseInt(subjectId);
+        if (selectedSubjectIds.length >= MAX_SUBJECTS) {
+            alertMessage('Alcanzaste el límite de 40 materias asignadas.', 'error');
+            return;
+        }
+        if (!selectedSubjectIds.includes(id)) {
+            selectedSubjectIds.push(id);
+            alertMessage(`Materia ID ${id} añadida.`, 'success');
+        }
+        // Rerender ambas listas para reflejar el cambio
+        renderMisMaterias(document.getElementById('materias-search-input')?.value || '');
+    }
+
+    // Maneja la eliminación de una materia
+    function handleRemoveSubject(subjectId) {
+        const id = parseInt(subjectId);
+        const index = selectedSubjectIds.indexOf(id);
+        if (index > -1) {
+            selectedSubjectIds.splice(index, 1);
+            alertMessage(`Materia ID ${id} eliminada.`, 'warning');
+        }
+        // Rerender ambas listas para reflejar el cambio
+        renderMisMaterias(document.getElementById('materias-search-input')?.value || '');
+    }
+
+    // Renderiza las listas de materias seleccionadas y disponibles
+    function renderMisMaterias(query = '') {
+        const availableList = document.getElementById('available-subjects-list');
+        const selectedList = document.getElementById('selected-subjects-list');
+        const counter = document.getElementById('subjects-counter');
+        const lowerCaseQuery = query.toLowerCase();
+
+        if (!availableList || !selectedList || !counter) return;
+
+        // 1. Actualizar contador
+        counter.textContent = `(${selectedSubjectIds.length} / ${MAX_SUBJECTS})`;
+
+        // 2. Materias Seleccionadas (filtradas por búsqueda si aplica)
+        const filteredSelectedSubjects = ALL_SUBJECT_GROUPS.filter(subject => 
+            selectedSubjectIds.includes(subject.id) && 
+            (lowerCaseQuery === '' || subject.name.toLowerCase().includes(lowerCaseQuery))
+        );
+
+        if (selectedSubjectIds.length === 0) {
+             selectedList.innerHTML = `<div class="p-4 text-center text-gray-500 mt-10">Aún no has seleccionado ninguna materia. Usa la lista de la derecha para empezar.</div>`;
+        } else if (filteredSelectedSubjects.length === 0) {
+            selectedList.innerHTML = `<div class="p-4 text-center text-gray-500">No hay materias seleccionadas que coincidan con la búsqueda.</div>`;
+        } else {
+             selectedList.innerHTML = filteredSelectedSubjects.map(subject => `
+                <div class="p-3 border-b border-gray-200 flex justify-between items-center transition-colors hover:bg-gray-100/50">
+                    <p class="font-medium text-primary-color flex items-center">
+                        <i data-lucide="book-open" class="w-4 h-4 mr-2 text-secondary-color"></i>
+                        ${subject.name} (ID: ${subject.id})
+                    </p>
+                    <button onclick="handleRemoveSubject(${subject.id})" class="text-sm text-error px-3 py-1 rounded-full font-semibold transition-colors hover:bg-error/10">
+                        <i data-lucide="x-circle" class="w-4 h-4 mr-1 inline-block"></i> Eliminar
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // 3. Materias Disponibles (Filtradas por búsqueda y excluyendo las ya seleccionadas)
+        const isMaxed = selectedSubjectIds.length >= MAX_SUBJECTS;
+        const filteredAvailableSubjects = ALL_SUBJECT_GROUPS.filter(subject => 
+            !selectedSubjectIds.includes(subject.id) && 
+            (lowerCaseQuery === '' || subject.name.toLowerCase().includes(lowerCaseQuery))
+        );
+
+        availableList.innerHTML = filteredAvailableSubjects.map(subject => {
+            let buttonHtml = `
+                <button onclick="handleAddSubject(${subject.id})" ${isMaxed ? 'disabled' : ''} 
+                        class="bg-tertiary-color2 text-white text-xs px-3 py-1 rounded-full font-semibold transition-colors shadow-md 
+                        ${isMaxed ? 'opacity-50 cursor-not-allowed' : 'hover:bg-tertiary-color2/90'}"> 
+                    Añadir 
+                </button>
+            `;
+
+            return `
+                <div class="p-3 border-b border-gray-200 flex justify-between items-center transition-colors hover:bg-gray-100/50">
+                    <p class="font-medium">${subject.name} (ID: ${subject.id})</p>
+                    ${buttonHtml}
+                </div>
+            `;
+        }).join('');
+
+        // Si no hay resultados de búsqueda para disponibles
+        if (filteredAvailableSubjects.length === 0) {
+            availableList.innerHTML = `
+                <div class="p-4 text-center text-gray-500 mt-10"> 
+                    No se encontraron materias que coincidan con la búsqueda o ya están todas seleccionadas. 
+                </div> 
+            `;
+        }
+        
+        // Recreate Lucide icons for the new elements (important!)
+        lucide.createIcons();
+    }
+
+
+    // ----------------------------------------------------------------
+    // 6. Inicialización de la Interfaz
+    // ----------------------------------------------------------------
+
+    window.onload = function() {
+        // Inicializa Firebase y la autenticación
+        if (typeof initializeAndAuthenticate === 'function') {
+            initializeAndAuthenticate();
+        }
+
+        // Listener para la navegación por URL hash
+        window.addEventListener('hashchange', handleHashChange);
+        
+        // Inicializa la vista por defecto (esto se puede mover después de la autenticación si se requiere data de Firebase)
+        // Si no hay hash, se va a 'dashboard'. Si hay, handleHashChange lo gestiona.
+        handleHashChange(); 
+        
+        // Inicializa el estado por defecto de las pestañas de Perfil
+        // Esto asegura que la primera pestaña esté activa al cargar la sección
+        switchProfileTab('detalles');
+
+
+        // Lógica de navegación con teclado para el modal de búsqueda (opcional pero mejora UX)
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+K o Cmd+K para abrir búsqueda
+            if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                openSearchModal();
+            }
+            // Escape para cerrar cualquier modal
+            if (e.key === 'Escape') {
+                const activeModals = document.querySelectorAll('.modal:not(.hidden)');
+                activeModals.forEach(modal => {
+                    modal.classList.add('hidden');
+                });
+            }
+        });
+
+        // Toggle del dropdown de perfil
+        const btnToggleProfile = document.getElementById('btn-toggle-profile');
+        const profileDropdown = document.getElementById('profile-dropdown');
+        if (btnToggleProfile && profileDropdown) {
+            btnToggleProfile.addEventListener('click', () => {
+                const isHidden = profileDropdown.classList.contains('hidden');
+                
+                // Toggle visibility
+                if (isHidden) {
+                    profileDropdown.classList.remove('hidden');
+                    setTimeout(() => {
+                        profileDropdown.classList.remove('opacity-0', 'translate-y-2');
+                    }, 10);
+                } else {
+                    profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => {
+                        profileDropdown.classList.add('hidden');
+                    }, 200); // Tiempo para que termine la transición
+                }
+            });
+            
+             // Cierra el dropdown al hacer clic fuera
+            document.addEventListener('click', (e) => {
+                if (!btnToggleProfile.contains(e.target) && !profileDropdown.contains(e.target) && !profileDropdown.classList.contains('hidden')) {
+                    profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                    setTimeout(() => {
+                        profileDropdown.classList.add('hidden');
+                    }, 200);
+                }
+            });
+            
+        }
+
+        // Listener para el botón de desconexión en el dropdown de perfil
+        document.getElementById('logout-button')?.addEventListener('click', () => {
+            if (window.Usuario && window.Usuario.handleLogout) {
+                window.Usuario.handleLogout();
+                // Oculta el dropdown después de la acción
+                profileDropdown.classList.add('opacity-0', 'translate-y-2', 'hidden');
+            } else {
+                alertMessage("Función de desconexión no inicializada.", "error");
+            }
+        });
+
+        // Renderiza los íconos de Lucide en toda la página
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+    
+    // Se agregan las funciones al scope global para que funcionen con onclick
+    window.toggleSidebar = toggleSidebar;
+    window.switchSection = switchSection;
+    window.openModal = openModal;
+    window.closeModal = closeModal;
+    window.openSearchModal = openSearchModal;
+    window.closeSearchModal = closeSearchModal;
+    window.quickSearch = quickSearch;
+    window.switchReservaTab = switchReservaTab;
+    window.switchProfileTab = switchProfileTab;
+    window.handleAddSubject = handleAddSubject;
+    window.handleRemoveSubject = handleRemoveSubject;
+    window.saveNotes = saveNotes;
+    window.configureQR = configureQR;
+
+
+    </script>
+</head>
+<body class="flex">
+
+    <aside id="sidebar" class="fixed top-0 left-0 h-full bg-primary-color text-text-light flex flex-col p-4 z-30 w-64 md:w-56 transition-transform duration-300 transform -translate-x-full md:translate-x-0">
+        <div class="flex items-center justify-between h-16 mb-6">
+            <img src="./Img/TugoLogo.png" alt="Logo" class="w-10 h-10 rounded-full border-2 border-tertiary-color2">
+            <div class="logo-border text-2xl font-black text-tertiary-color2 rounded-xl">ClassGo!</div>
+            <button onclick="toggleSidebar()" class="p-2 rounded-full hover:bg-secondary-color/20 text-text-light md:hidden">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <nav class="flex-grow space-y-2">
+            <button onclick="switchSection('dashboard')" class="flex items-center w-full p-2 rounded-xl text-left nav-button active">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i> Panel de Control
+            </button>
+            <button onclick="switchSection('reservas')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="calendar-check" class="w-5 h-5 mr-3"></i> Gestión de Reservas
+            </button>
+            <button onclick="switchSection('historial')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="clock-history" class="w-5 h-5 mr-3"></i> Historial de Tutorías
+            </button>
+            <button onclick="switchSection('pagos')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="wallet" class="w-5 h-5 mr-3"></i> Gestión de Pagos
+            </button>
+            <button onclick="switchSection('perfil')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="settings" class="w-5 h-5 mr-3"></i> Configuración de Perfil
+            </button>
+        </nav>
+
+        <div class="mt-auto pt-4 border-t border-tertiary-color/50">
+            <button onclick="switchSection('perfil')" class="flex items-center w-full p-2 rounded-xl text-left bg-tertiary-color2/20 hover:bg-tertiary-color2/50 transition-colors">
+                <img src="https://placehold.co/40x40/FB8500/FFFFFF?text=T" alt="Usuario" class="w-10 h-10 rounded-full mr-3 border-2 border-tertiary-color2">
+                <div class="text-sm">
+                    <p id="tutor-name-display" class="font-semibold text-text-light">Tutor</p>
+                    <p class="text-xs text-text-light/80">Ver Perfil</p>
+                </div>
+            </button>
+        </div>
+    </aside>
+
+    <div onclick="toggleSidebar()" class="fixed inset-0 bg-black opacity-50 z-20 md:hidden transition-opacity duration-200 hidden" id="sidebar-overlay"></div>
+
+    <div class="flex-1 flex flex-col overflow-hidden md:ml-56">
+        <header class="bg-text-light shadow-md p-4 flex justify-between items-center z-10 sticky top-0">
+            <div class="flex items-center">
+                <button onclick="toggleSidebar()" class="p-2 rounded-full hover:bg-gray-100 text-primary-color md:hidden">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <h2 id="view-title" class="text-xl font-semibold text-primary-color ml-3 md:ml-0">Panel de Control</h2>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <button onclick="openSearchModal()" class="flex items-center px-3 py-2 bg-secondary-color2 rounded-xl text-primary-color hover:bg-secondary-color2/80 transition-colors border">
+                    <i data-lucide="search" class="w-5 h-5 mr-2"></i> 
+                    <span class="text-sm hidden sm:inline">Buscar...</span>
+                </button>
+                <button class="p-2 bg-secondary-color2 rounded-xl text-primary-color hover:bg-secondary-color2/80 transition-colors">
+                    <i data-lucide="bell" class="w-6 h-6"></i>
+                </button>
+                
+                <div class="relative">
+                    <button id="btn-toggle-profile" class="flex items-center space-x-2 p-1 bg-white rounded-full hover:bg-gray-100 transition-colors border-2 border-primary-color">
+                        <img src="https://placehold.co/40x40/023047/DEE2E6?text=T" alt="Avatar" class="w-8 h-8 rounded-full object-cover">
+                        <span id="tutor-name-display-header" class="font-medium text-primary-color hidden md:inline">Tutor</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 mr-1 hidden md:inline"></i>
+                    </button>
+                    <div id="profile-dropdown" class="dropdown-menu absolute right-0 mt-3 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 p-2 hidden opacity-0 translate-y-2 transition-all duration-200">
+                        <button onclick="switchSection('perfil')" class="flex items-center w-full p-2 text-primary-color hover:bg-tertiary-color rounded-lg transition-colors">
+                            <i data-lucide="user" class="w-4 h-4 mr-2"></i> Ver Perfil
+                        </button>
+                        <button class="flex items-center w-full p-2 text-primary-color hover:bg-tertiary-color rounded-lg transition-colors">
+                            <i data-lucide="settings" class="w-4 h-4 mr-2"></i> Ajustes
+                        </button>
+                        <hr class="my-2 border-gray-100">
+                        <button id="logout-button" class="flex items-center w-full p-2 text-error hover:bg-red-50 rounded-lg transition-colors">
+                            <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> Desconexión
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 bg-secondary-color2">
+
+            <section id="dashboard" class="content-section">
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-primary-color flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Clases Totales</p>
+                                <p class="text-3xl font-bold text-primary-color mt-1">45</p>
+                            </div>
+                            <i data-lucide="graduation-cap" class="w-8 h-8 text-primary-color/50"></i>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-success flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Valoración Promedio</p>
+                                <p class="text-3xl font-bold text-success mt-1">4.9/5</p>
+                            </div>
+                            <i data-lucide="star" class="w-8 h-8 text-success/50 fill-success/50"></i>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-warning flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Reservas Pendientes</p>
+                                <p class="text-3xl font-bold text-warning mt-1">8</p>
+                            </div>
+                            <i data-lucide="calendar-check" class="w-8 h-8 text-warning/50"></i>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-tertiary-color2 flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Ingresos del Mes</p>
+                                <p class="text-3xl font-bold text-tertiary-color2 mt-1">$1,250</p>
+                            </div>
+                            <i data-lucide="dollar-sign" class="w-8 h-8 text-tertiary-color2/50"></i>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-xl card-shadow">
+                            <h3 class="text-lg font-semibold mb-4">Distribución de Horas por Materia</h3>
+                            <div class="h-64">
+                                <canvas id="chartMaterias" class="h-64"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl card-shadow">
+                            <h3 class="text-lg font-semibold mb-4">Nivel de Satisfacción General</h3>
+                            <div class="h-64">
+                                <canvas id="chartSatisfaccion" class="h-64"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl card-shadow">
+                        <h3 class="text-lg font-semibold mb-4 flex justify-between items-center">
+                            Próximas Reservas
+                            <button onclick="switchSection('reservas')" class="text-sm text-secondary-color hover:text-secondary-color/80">Ver todas</button>
+                        </h3>
+                        <ul class="space-y-3">
+                            <li class="p-3 bg-secondary-color2/50 rounded-lg flex justify-between items-center border-l-4 border-success">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="calendar-check" class="w-5 h-5 text-success"></i>
+                                    <div>
+                                        <p class="font-medium">Cálculo Diferencial - Estudiante A</p>
+                                        <p class="text-sm text-gray-600">Hoy, 18:00 - Confirmada</p>
+                                    </div>
+                                </div>
+                                <button class="text-primary-color hover:text-primary-color/80 text-sm">
+                                    <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                                </button>
+                            </li>
+                            <li class="p-3 bg-secondary-color2/50 rounded-lg flex justify-between items-center border-l-4 border-warning">
+                                <div class="flex items-center space-x-3">
+                                    <i data-lucide="clock" class="w-5 h-5 text-warning"></i>
+                                    <div>
+                                        <p class="font-medium">Programación C++ - Estudiante B</p>
+                                        <p class="text-sm text-gray-600">Mañana, 10:00 - Pendiente</p>
+                                    </div>
+                                </div>
+                                <button class="text-primary-color hover:text-primary-color/80 text-sm">
+                                    <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section id="reservas" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Gestión De Reservas</h2>
+
+                    <div class="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap space-x-4">
+                        <button id="reserva-tab-programar" onclick="switchReservaTab('programar')" 
+                                class="reserva-tab py-2 px-4 font-medium text-gray-500 hover:text-primary-color/80 transition-colors"> 
+                            Programar Disponibilidad 
+                        </button>
+                        <button id="reserva-tab-mis" onclick="switchReservaTab('mis')" 
+                                class="reserva-tab py-2 px-4 font-medium active-reserva-tab transition-colors"> 
+                            Mis Reservas (Próximas)
+                        </button>
+                        <button id="reserva-tab-materias" onclick="switchReservaTab('materias')" 
+                                class="reserva-tab py-2 px-4 font-medium text-gray-500 hover:text-primary-color/80 transition-colors"> 
+                            Mis Materias
+                        </button>
+                    </div>
+
+                    <div id="reserva-content-programar" class="reserva-tab-content hidden">
+                        <p class="text-gray-600 mb-6">Configura tus horarios disponibles para tutorías. Bloquea o añade espacios en tu calendario.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-secondary-color2 p-4 rounded-xl border border-gray-300">
+                                <h4 class="font-semibold mb-3 text-primary-color">Tu Calendario Semanal</h4>
+                                <div class="bg-white p-4 rounded-lg text-center text-sm text-gray-500">
+                                    [Aquí iría un componente de calendario interactivo]
+                                    <p class="mt-2">Lunes a Viernes: 14:00 - 18:00</p>
+                                    <p>Sábados: 09:00 - 12:00</p>
+                                </div>
+                                <button class="mt-4 w-full bg-primary-color text-white px-4 py-2 rounded-xl hover:bg-primary-color/90 transition-colors">Actualizar Horarios</button>
+                            </div>
+                            <div class="p-4 rounded-xl bg-white border border-gray-300">
+                                <h4 class="font-semibold mb-3 text-primary-color">Opciones de Reserva</h4>
+                                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg mb-4">
+                                    <p class="text-sm font-medium">Auto-aceptar Reservas</p>
+                                    <label class="toggle-label-container relative inline-block w-10 mr-2 align-middle select-none">
+                                        <input type="checkbox" id="toggle-auto-accept" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                        <label for="toggle-auto-accept" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                                    </label>
+                                </div>
+                                <button class="text-sm font-medium text-secondary-color hover:underline">Ver Configuración Avanzada</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="reserva-content-mis" class="reserva-tab-content">
+                        <p class="text-gray-600 mb-6">Consulta y gestiona las tutorías que tienes agendadas en el futuro. Puedes confirmar, rechazar o ver los detalles.</p>
+                        <div class="space-y-4">
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card confirmada grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="clock" class="w-5 h-5 text-success"></i>
+                                    <p class="font-bold text-lg text-success">18:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Cálculo Diferencial <span class="text-sm font-normal text-gray-500">(Estudiante A)</span></p>
+                                    <p class="text-sm text-gray-600">Miércoles, 15 de Diciembre</p>
+                                    <p class="text-xs text-success font-medium mt-1">Confirmada</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full border border-gray-300">
+                                        <i data-lucide="video" class="w-5 h-5"></i>
+                                    </button>
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full border border-gray-300">
+                                        <i data-lucide="info" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card pendiente grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="clock" class="w-5 h-5 text-warning"></i>
+                                    <p class="font-bold text-lg text-warning">10:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Programación C++ <span class="text-sm font-normal text-gray-500">(Estudiante B)</span></p>
+                                    <p class="text-sm text-gray-600">Jueves, 16 de Diciembre</p>
+                                    <p class="text-xs text-warning font-medium mt-1">Pendiente de Aprobación</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button onclick="alertMessage('Reserva Aceptada', 'success')" class="text-white bg-success hover:bg-success/80 text-xs px-3 py-1 rounded-full">Aceptar</button>
+                                    <button onclick="alertMessage('Reserva Rechazada', 'error')" class="text-error border border-error hover:bg-error/10 text-xs px-3 py-1 rounded-full">Rechazar</button>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card confirmada grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="clock" class="w-5 h-5 text-success"></i>
+                                    <p class="font-bold text-lg text-success">14:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Física I - Estudiante C</p>
+                                    <p class="text-sm text-gray-600">Viernes, 17 de Diciembre</p>
+                                    <p class="text-xs text-success font-medium mt-1">Confirmada</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full border border-gray-300">
+                                        <i data-lucide="video" class="w-5 h-5"></i>
+                                    </button>
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full border border-gray-300">
+                                        <i data-lucide="info" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="reserva-content-materias" class="reserva-tab-content hidden">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div class="bg-white rounded-xl card-shadow border-t-4 border-primary-color flex flex-col min-h-[500px] lg:max-h-[80vh]">
+                                <div class="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                                    <h3 class="text-xl font-bold text-primary-color flex justify-between items-end">
+                                        <span>Materias Seleccionadas</span>
+                                        <span id="subjects-counter" class="text-lg font-semibold text-secondary-color">(3 / 40)</span>
+                                    </h3>
+                                    <p class="text-sm text-gray-500">Administra tus materias. Límite de 40.</p>
+                                </div>
+                                <div id="selected-subjects-list" class="flex-grow overflow-y-auto divide-y divide-gray-100">
+                                    </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-xl card-shadow border-t-4 border-tertiary-color2 flex flex-col min-h-[500px] lg:max-h-[80vh]">
+                                <div class="p-0">
+                                    <div class="bg-primary-color p-4 rounded-t-xl sticky top-0 z-10">
+                                        <h3 class="text-xl font-bold text-text-light mb-2">Materias Disponibles</h3>
+                                        <div class="relative">
+                                            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"></i>
+                                            <input type="text" id="materias-search-input" oninput="renderMisMaterias(this.value)"
+                                                   placeholder="Buscar materia por nombre o ID..." 
+                                                   class="w-full pl-10 pr-4 py-2 rounded-xl text-primary-color border-none focus:ring-secondary-color focus:border-secondary-color shadow-inner">
+                                        </div>
+                                    </div>
+                                    <div id="available-subjects-list" class="flex-grow overflow-y-auto divide-y divide-gray-100">
+                                        </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="historial" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Historial de Clases</h2>
+                    <p class="text-gray-600 mb-6">Revisa las tutorías completadas, sus detalles y la valoración de los alumnos.</p>
+                    
+                    <div class="flex space-x-4 mb-6">
+                        <select class="p-2 border rounded-xl text-sm">
+                            <option>Todas las Materias</option>
+                            <option>Cálculo</option>
+                            <option>Programación</option>
+                        </select>
+                        <select class="p-2 border rounded-xl text-sm">
+                            <option>Últimos 30 Días</option>
+                            <option>Este Año</option>
+                            <option>Todo el Historial</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                            <div class="col-span-1">
+                                <p class="font-bold text-primary-color">18/11/2023</p>
+                                <p class="text-xs text-gray-500">1.5 horas</p>
+                            </div>
+                            <div class="col-span-2">
+                                <p class="font-semibold">Cálculo Diferencial</p>
+                                <p class="text-sm text-gray-600">Estudiante A</p>
+                            </div>
+                            <div class="col-span-1 flex items-center">
+                                <i data-lucide="star" class="w-4 h-4 text-warning fill-warning mr-1"></i>
+                                <span class="text-sm font-medium">5.0</span>
+                            </div>
+                            <div class="col-span-1 text-right">
+                                <button class="text-primary-color hover:text-secondary-color text-sm">Ver Detalles</button>
+                            </div>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                            <div class="col-span-1">
+                                <p class="font-bold text-primary-color">10/11/2023</p>
+                                <p class="text-xs text-gray-500">2.0 horas</p>
+                            </div>
+                            <div class="col-span-2">
+                                <p class="font-semibold">Programación Python</p>
+                                <p class="text-sm text-gray-600">Estudiante D</p>
+                            </div>
+                            <div class="col-span-1 flex items-center">
+                                <i data-lucide="star" class="w-4 h-4 text-warning fill-warning mr-1"></i>
+                                <span class="text-sm font-medium">4.5</span>
+                            </div>
+                            <div class="col-span-1 text-right">
+                                <button class="text-primary-color hover:text-secondary-color text-sm">Ver Detalles</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="pagos" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Gestión de Pagos</h2>
+                    <p class="text-gray-600 mb-6">Monitorea tus pagos pendientes y recibidos y configura tus métodos de cobro.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                        <div class="p-4 bg-tertiary-color/50 rounded-lg border border-tertiary-color">
+                            <p class="text-sm font-semibold text-primary-color">Saldo Actual</p>
+                            <p class="text-3xl font-bold text-primary-color">$300.00</p>
+                        </div>
+                        <div class="p-4 bg-success/10 rounded-lg border border-success/30">
+                            <p class="text-sm font-semibold text-success">Pagos Recibidos (Mes)</p>
+                            <p class="text-3xl font-bold text-success">$950.00</p>
+                        </div>
+                        <div class="p-4 bg-gray-100 rounded-lg border border-gray-200">
+                            <p class="text-sm font-semibold text-gray-700">Próximo Pago</p>
+                            <p class="text-xl font-bold text-gray-700 mt-2">15 Diciembre ($300)</p>
+                        </div>
+                    </div>
+
+                    <button class="bg-primary-color text-white px-5 py-2 rounded-xl font-medium hover:bg-primary-color/90 transition-colors shadow-md">Solicitar Retiro</button>
+
+                    <hr class="my-8 border-gray-200">
+                    
+                    <h3 class="text-lg font-semibold mb-4">Métodos de Cobro</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-white p-5 rounded-xl border border-gray-200 text-center card-shadow hover:ring-2 ring-primary-color/30 transition-shadow">
+                            <i data-lucide="banknote" class="w-10 h-10 mx-auto text-primary-color mb-3"></i>
+                            <p class="font-semibold text-lg mb-4">Cuenta Bancaria</p>
+                            <button class="bg-primary-color text-white px-5 py-2 rounded-xl font-medium hover:bg-primary-color/90 transition-colors shadow-md">
+                                Configurar cuenta
+                            </button>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl border border-gray-200 text-center card-shadow hover:ring-2 ring-success/30 transition-shadow">
+                            <i data-lucide="qr-code" class="w-10 h-10 mx-auto text-success mb-3"></i>
+                            <p class="font-semibold text-lg mb-4">Pago en QR</p>
+                            <button onclick="openModal('qr-modal')" class="bg-success text-white px-5 py-2 rounded-xl font-medium hover:bg-success/90 transition-colors shadow-md">
+                                Gestionar QR
+                            </button>
+                            <button class="text-error text-sm mt-2 block w-full hover:underline">Eliminar QR</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="perfil" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-6">Configuración de Perfil</h2>
+
+                    <div class="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap">
+                        <button id="profile-tab-detalles" onclick="switchProfileTab('detalles')" 
+                                class="profile-tab py-2 px-4 font-medium transition-colors active-profile-tab"> 
+                            Detalle personal del Tutor 
+                        </button>
+                        <button id="profile-tab-cuenta" onclick="switchProfileTab('cuenta')" 
+                                class="profile-tab py-2 px-4 font-medium transition-colors text-gray-500 hover:text-primary-color/80"> 
+                            Configuraciones de la cuenta 
+                        </button>
+                        <button id="profile-tab-curriculum" onclick="switchProfileTab('curriculum')" 
+                                class="profile-tab py-2 px-4 font-medium transition-colors text-gray-500 hover:text-primary-color/80"> 
+                            Aspectos destacados del curriculum 
+                        </button>
+                    </div>
+
+                    <div id="profile-content-detalles" class="profile-tab-content space-y-6">
+                        <h3 class="text-lg font-semibold mb-4">Proporcione su información personal a continuación para completar su perfil</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="full-name" class="block text-sm font-medium text-gray-700">Nombre Completo</label>
+                                <input type="text" id="full-name" value="Nombre del Tutor" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                                <input type="email" id="email" value="tutor@ejemplo.com" disabled class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2 bg-gray-100 cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label for="phone" class="block text-sm font-medium text-gray-700">Teléfono</label>
+                                <input type="tel" id="phone" value="+591 700 00000" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2">
+                            </div>
+                            <div>
+                                <label for="location" class="block text-sm font-medium text-gray-700">Ubicación (País/Ciudad)</label>
+                                <input type="text" id="location" value="Bolivia, Santa Cruz" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="bio" class="block text-sm font-medium text-gray-700 mb-1">Tu Biografía / Descripción</label>
+                            <textarea id="bio" rows="4" class="block w-full rounded-xl border-gray-300 shadow-sm p-2" oninput="saveNotes()">
+Soy un tutor apasionado con 5 años de experiencia en la enseñanza de matemáticas y programación. Me encanta ayudar a los estudiantes a superar sus desafíos.
+                            </textarea>
+                            <p class="text-xs text-gray-500 mt-1">Breve descripción que se mostrará en tu perfil público.</p>
+                        </div>
+                        
+                        <div class="mt-6 flex justify-end">
+                            <button onclick="alertMessage('Detalles actualizados.', 'success')" class="bg-primary-color text-white px-5 py-2 rounded-xl font-medium hover:bg-primary-color/90 transition-colors shadow-md">
+                                Guardar Detalles
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="profile-content-cuenta" class="profile-tab-content hidden">
+                        <h3 class="text-lg font-semibold mb-4">Configuraciones de Seguridad y Notificaciones</h3>
+                        <div class="space-y-6">
+                            <div class="border p-4 rounded-xl">
+                                <p class="font-semibold text-primary-color mb-3">Cambiar Contraseña</p>
+                                <input type="password" placeholder="Contraseña actual" class="mt-2 block w-full max-w-sm rounded-xl border-gray-300 shadow-sm p-2">
+                                <input type="password" placeholder="Nueva contraseña" class="mt-2 block w-full max-w-sm rounded-xl border-gray-300 shadow-sm p-2">
+                                <button onclick="alertMessage('Contraseña actualizada.', 'success')" class="mt-3 bg-tertiary-color2 text-white px-4 py-2 rounded-xl text-sm hover:bg-tertiary-color2/90">Actualizar Contraseña</button>
+                            </div>
+                            <div class="border p-4 rounded-xl">
+                                <p class="font-semibold text-primary-color mb-3">Preferencias de Notificación</p>
+                                <div class="flex items-center space-x-2">
+                                    <input type="checkbox" id="email-notifications" checked class="rounded text-primary-color focus:ring-primary-color">
+                                    <label for="email-notifications" class="text-sm">Notificaciones por Email</label>
+                                </div>
+                                <div class="flex items-center space-x-2 mt-2">
+                                    <input type="checkbox" id="sms-notifications" class="rounded text-primary-color focus:ring-primary-color">
+                                    <label for="sms-notifications" class="text-sm">Notificaciones por SMS</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="profile-content-curriculum" class="profile-tab-content hidden">
+                        <h3 class="text-lg font-semibold mb-4">Documentos y Certificaciones</h3>
+                        <p class="text-gray-600">Sube tus certificaciones, diplomas y experiencia laboral relevante para que tus alumnos te conozcan mejor.</p>
+                        
+                        <div class="mt-4 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer">
+                            <i data-lucide="file-text" class="w-8 h-8 mx-auto text-gray-400 mb-2"></i>
+                            <p class="text-sm font-medium text-gray-600">Arrastra y suelta tus archivos aquí, o haz clic para subir.</p>
+                            <input type="file" multiple class="hidden">
+                        </div>
+                        
+                        <div class="mt-4 space-y-2">
+                            <div class="flex justify-between items-center p-3 border rounded-xl bg-white">
+                                <p class="text-sm font-medium">Diploma_Ingenieria.pdf</p>
+                                <button class="text-error hover:text-error/80 text-sm">Eliminar</button>
+                            </div>
+                        </div>
+                        <div class="mt-6 flex justify-end">
+                            <button onclick="alertMessage('Archivos subidos.', 'success')" class="bg-secondary-color text-white px-5 py-2 rounded-xl font-medium hover:bg-secondary-color/90 transition-colors shadow-md">
+                                Guardar Currículum
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <div id="search-modal" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden pt-20" onclick="if(event.target.id === 'search-modal') closeSearchModal()">
+        <div class="bg-white rounded-xl w-full max-w-xl card-shadow transition-all duration-300 mx-auto modal-content" role="dialog" aria-modal="true">
+            <div class="flex items-center border-b p-4">
+                <i data-lucide="search" class="w-5 h-5 text-gray-500 mr-3"></i>
+                <input type="text" id="search-input-modal" oninput="quickSearch()" 
+                       placeholder="Buscar gestión de reserva, historial, materias, etc." 
+                       class="flex-grow text-lg border-none focus:ring-0 focus:outline-none">
+                <span class="text-sm text-gray-400 p-1 border rounded-md">Esc</span>
+            </div>
+            <div id="search-results" class="p-4 space-y-1 max-h-80 overflow-y-auto">
+                <p class="text-gray-500 text-sm">Empieza a escribir para buscar secciones del panel...</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="qr-modal" class="modal fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center" onclick="if(event.target.id === 'qr-modal') closeModal('qr-modal')">
+        <div class="bg-white rounded-xl p-6 w-full max-w-lg card-shadow transition-all duration-300 modal-content" role="dialog" aria-modal="true">
+            <h3 class="text-xl font-semibold mb-4 text-primary-color">Gestionar Código QR</h3>
+            <p class="text-gray-600 mb-4">Configura los detalles que se mostrarán al generar tu código QR de pago.</p>
+            
+            <form class="space-y-4">
+                <div>
+                    <label for="qr-amount" class="block text-sm font-medium text-gray-700">Monto por defecto (opcional)</label>
+                    <input type="number" id="qr-amount" placeholder="Ej: 50.00" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2">
+                </div>
+                <div>
+                    <label for="qr-details" class="block text-sm font-medium text-gray-700">Concepto o Detalle (opcional)</label>
+                    <input type="text" id="qr-details" placeholder="Ej: Tutoría de Cálculo" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-2">
+                </div>
+                <div>
+                    <label for="qr-image" class="block text-sm font-medium text-gray-700">Imagen de Fondo (opcional)</label>
+                    <input type="file" id="qr-image" accept=".png, .jpg, .jpeg" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-color file:text-white hover:file:bg-primary-color/90">
+                </div>
+            </form>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button onclick="closeModal('qr-modal')" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-300">Cancelar</button>
+                <button onclick="configureQR()" class="bg-success text-white px-4 py-2 rounded-xl hover:bg-success/90">Guardar Configuración</button>
+            </div>
+        </div>
+    </div>
+    
+</body>
+</html>
