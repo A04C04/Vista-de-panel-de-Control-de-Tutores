@@ -1,0 +1,2076 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control del Tutor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.plyr.io/3.6.8/plyr.js"></script>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.6.8/plyr.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Inicialización de variables globales
+        let app, db, auth, userId = 'default-user';
+        // Estas variables DEBEN ser definidas en el entorno de ejecución (ej. variables de entorno)
+        // Se usan valores de prueba para evitar errores de referencia si no están definidas.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ?
+            JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Log de depuración para Firestore (puede eliminarse en producción)
+        // setLogLevel('debug'); 
+
+        // Función de inicialización y autenticación
+        async function initializeAndAuthenticate() {
+            if (!firebaseConfig) {
+                console.error("Firebase configuration is missing.");
+                return;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Usuario autenticado. UID:", userId);
+                        // document.getElementById('user-id-display').textContent = userId; // Comentado, no existe en HTML
+                        // Inicia la carga de datos y listeners una vez autenticado
+                        loadInitialData(userId);
+                    } else {
+                        userId = 'anonymous';
+                        console.log("Usuario anónimo o desautenticado.");
+                        // document.getElementById('user-id-display').textContent = 'Anónimo'; // Comentado, no existe en HTML
+                        loadInitialData(userId);
+                    }
+                });
+            } catch (error) {
+                console.error("Error en la inicialización o autenticación de Firebase:", error);
+            }
+        }
+
+        // Simulación de módulo de usuario para desconexión
+        const Usuario = {
+            handleLogout: async () => {
+                try {
+                    await signOut(auth);
+                    console.log("Sesión cerrada con éxito.");
+                    alertMessage('Sesión cerrada con éxito.', 'success');
+                    // Opcional: Redirigir o actualizar la UI
+                } catch (error) {
+                    console.error("Error al cerrar sesión:", error);
+                    alertMessage('Error al cerrar sesión.', 'error');
+                }
+            }
+        };
+
+        // Función para cargar datos iniciales (ejemplo)
+        function loadInitialData(currentUserId) {
+            // Asegurarse de que `db` está disponible antes de llamar a `doc`
+            if (!db) {
+                console.error("Firestore DB no está inicializada.");
+                return;
+            }
+        
+            // Función auxiliar para obtener la referencia del tutor
+            window.getTutorRef = () => doc(db, 'artifacts', appId, 'users', currentUserId, 'profile', 'data');
+            
+            const tutorRef = window.getTutorRef();
+
+            // Listener para datos privados del tutor
+            onSnapshot(tutorRef, (docSnap) => {
+                const nameDisplay = document.getElementById('tutor-name-display');
+                const nameDisplayHeader = document.getElementById('tutor-name-display-header');
+                const currentProfileData = docSnap.exists() ? docSnap.data() : null;
+                window.currentProfileData = currentProfileData; // Guardar datos para uso en otras funciones
+
+                if (currentProfileData) {
+                    console.log("Datos del tutor:", currentProfileData);
+                    if (nameDisplay) {
+                        nameDisplay.textContent = currentProfileData.name || 'Tutor';
+                    }
+                    if (nameDisplayHeader) {
+                        nameDisplayHeader.textContent = currentProfileData.name || 'Tutor';
+                    }
+                    
+                    // Asegurarse de que los datos se carguen si la pestaña de perfil está activa
+                    if (window.location.hash.startsWith('#perfil')) {
+                         const currentTab = window.location.hash.split('/')[1] || 'detalles';
+                         if (currentTab === 'detalles') {
+                             window.updateProfileForm(currentProfileData);
+                         } else if (currentTab === 'account-settings') {
+                             window.updateAccountForm(currentProfileData);
+                         }
+                    }
+
+                } else {
+                    console.log("No hay datos de perfil para el tutor, creando inicial.");
+                    setDoc(tutorRef, { name: 'Tutor', lastName: '', email: '', phone: '', gender: 'Masculino', bio: 'Bienvenido a tu panel.', motherTongue: 'Español', motto: MOTTO_OPTIONS[0], otherLanguages: [], lastLogin: new Date().toISOString() }, { merge: true })
+                        .then(() => console.log("Perfil inicial creado."))
+                        .catch(err => console.error("Error al crear perfil:", err));
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en el perfil:", error);
+            });
+            // Una vez que los datos cargan, cambiamos a la vista inicial (ej. dashboard)
+            window.location.hash = window.location.hash || '#dashboard';
+            handleHashChange();
+        }
+
+        // Exportar funciones y variables necesarias para el scope global
+        window.db = db;
+        window.auth = auth;
+        window.Usuario = Usuario;
+        window.initializeAndAuthenticate = initializeAndAuthenticate;
+    </script>
+    
+    <script>
+        // Configuración de Tailwind para usar las variables CSS en las clases
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-color': 'var(--primary-color)',
+                        'secondary-color': 'var(--secondary-color)',
+                        'secondary-color2': 'var(--secondary-color2)',
+                        'tertiary-color': 'var(--tertiary-color)',
+                        'tertiary-color2': 'var(--tertiary-color2)',
+                        'text-light': 'var(--text-light)',
+                        'text-dark': 'var(--text-dark)',
+                        'success': '#10B981', // Verde para éxito
+                        'warning': '#F59E0B', // Amarillo para advertencia
+                        'error': '#EF4444', // Rojo para error
+                    }
+                }
+            }
+        }
+    </script>
+    <script>
+        // Inicializar Lucide Icons si es necesario
+        lucide.createIcons();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Inicializa el reproductor Plyr después de que el DOM esté completamente cargado.
+            const player = new Plyr('#player');
+            
+            // Función placeholder (necesaria para el botón de navegación)
+            if (typeof window.switchSection !== 'function') {
+                window.switchSection = function(sectionId) {
+                    console.log('Navegando a la sección:', sectionId);
+                    // Lógica de su aplicación para cambiar de vista aquí.
+                };
+            }
+        });
+    </script>
+
+    <style>
+        /* Definición de la paleta de colores usando CSS Variables */
+        :root {
+            --primary-color: #023047; /* Azul Oscuro (Barra Lateral, Fondo Principal) */
+            --secondary-color: #219EBC; /* Azul Claro/Cian (Botones, Destacados) */
+            --secondary-color2: #CDD6DA; /* Gris Claro (Fondos Secundarios) */
+            --tertiary-color: #8ECAE6; /* Azul Pálido (Hover, Bordes) */
+            --tertiary-color2: #FB8500; /* Naranja (Alertas, Énfasis) */
+            --text-light: #F8F9FA;
+            --text-dark: #1F2937;
+        }
+
+        /* Estilos generales */
+        body {
+            background-color: var(--secondary-color2);
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+        }
+        
+        /* Estilos para la barra lateral y navegación */
+        #sidebar {
+            background-color: var(--primary-color);
+        }
+        .nav-button {
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .nav-button:hover {
+            background-color: var(--secondary-color);
+        }
+        .nav-button.active {
+            background-color: var(--tertiary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        /* Estilos específicos para la usabilidad */
+        .card-shadow {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Estilos para el campo de búsqueda global */
+        #search-modal {
+            background-color: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(2px);
+        }
+
+        /* Estilo para el borde naranja del logo */
+        .logo-border {
+            border: 2px solid var(--tertiary-color2);
+            padding: 0.5rem;
+        }
+
+        /* Estilo para los tabs de Reservas */
+        .active-reserva-tab {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            font-weight: 600;
+        }
+        
+        /* Estilo para los tabs de Perfil */
+        .profile-tab.active-profile-tab {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            font-weight: 600;
+        }
+        .profile-tab {
+             transition: color 0.2s, border-bottom 0.2s;
+        }
+
+        /* Estilo para la tarjeta de reserva */
+        .reserva-card {
+            border-left: 5px solid var(--secondary-color);
+            transition: box-shadow 0.3s, transform 0.3s;
+        }
+        .reserva-card.confirmada {
+            border-left-color: var(--success);
+        }
+        .reserva-card.pendiente {
+            border-left-color: var(--warning);
+        }
+        .reserva-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+            transform: translateY(-2px);
+        }
+        
+        /* CSS para el toggle switch de auto-aceptar */
+        .toggle-checkbox {
+            position: absolute;
+            opacity: 0;
+        }
+        .toggle-label {
+            display: block;
+            width: 40px;
+            height: 24px;
+            cursor: pointer;
+            position: relative;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: var(--secondary-color);
+        }
+        .toggle-label:after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 90px;
+            transition: all 0.2s ease-in-out;
+        }
+        .toggle-checkbox:checked + .toggle-label:after {
+            transform: translateX(16px);
+        }
+    </style>
+    <!-- Estilos Customizados (Simulación de clases am-*) -->
+    <style>
+        /* Variables y base */
+        :root { --primary-color: #023047; }
+        .am-card {
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+        .am-card-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .am-card-body {
+            padding: 1.5rem;
+        }
+        /* Estilos para el botón principal */
+        .am-btnn { 
+            display: inline-block;
+            text-align: center;
+            border: none;
+            cursor: pointer;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            transition: background-color 0.3s;
+        }
+        .am-btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .am-btn-primary:hover {
+             background-color: #033a5a;
+        }
+        /* Estilo para la barra lateral (Sidebar) */
+        #sidebar {
+            width: 14rem; /* 56 en Tailwind */
+            transform: translateX(0);
+            transition: transform 0.3s ease-in-out;
+        }
+        .sidebar-hidden {
+            transform: translateX(-14rem) !important;
+        }
+        @media (min-width: 768px) {
+            #sidebar {
+                position: fixed;
+                height: 100vh;
+            }
+            .sidebar-hidden {
+                transform: translateX(0) !important;
+            }
+        }
+        .nav-button.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .nav-button:not(.active):hover {
+            background-color: #f3f4f6;
+        }
+    </style>
+    <script>
+    // ----------------------------------------------------------------
+    // 1. Variables Globales y Configuración de Servicios
+    // ----------------------------------------------------------------
+    let currentLanguage = 'es';
+
+    // Opciones para selectores
+    const LANGUAGE_OPTIONS = ['Español', 'Inglés', 'Francés', 'Alemán', 'Portugués', 'Italiano', 'Otro'];
+    const MOTTO_OPTIONS = ['Seleccione un lema', 'Enseñar es aprender dos veces.', 'La educación es el arma más poderosa.', 'El conocimiento es poder.', 'Nunca dejes de aprender.'];
+
+    // Función de utilidad para rellenar selectores
+    function populateSelect(selectId, options, addPlaceholder = false) {
+        const selectElement = document.getElementById(selectId);
+        if (!selectElement) return;
+
+        selectElement.innerHTML = '';
+        if (addPlaceholder) {
+            // El placeholder debe ser la primera opción no seleccionable
+            const placeholder = document.createElement('option');
+            placeholder.value = options[0]; 
+            placeholder.textContent = options[0];
+            placeholder.disabled = true;
+            placeholder.selected = true;
+            selectElement.appendChild(placeholder);
+        }
+
+        const optionsToDisplay = addPlaceholder ? options.slice(1) : options;
+
+        optionsToDisplay.forEach(optionText => {
+            const option = document.createElement('option');
+            option.value = optionText;
+            option.textContent = optionText;
+            selectElement.appendChild(option);
+        });
+    }
+
+    // --- Variables de Estado para Mis Materias ---
+    const MAX_SUBJECTS = 40;
+    // Estado inicial de prueba: 3 materias seleccionadas
+    let selectedSubjectIds = [1, 2, 3]; 
+    
+    // Datos de TODAS las 114 Materias (extraído del subject_groups.pdf)
+    const ALL_SUBJECT_GROUPS = [
+        { id: 1, name: 'Básico' }, { id: 2, name: 'Primaria' }, { id: 3, name: 'Secundaria' },
+        { id: 4, name: 'Ciencias Exactas' }, { id: 5, name: 'Química' }, { id: 6, name: 'Econometría' },
+        { id: 7, name: 'Finanzas' }, { id: 8, name: 'Economía Cuantitativa' }, { id: 9, name: 'Contabilidad' },
+        { id: 10, name: 'Presupuesto y Criptoactivos' }, { id: 11, name: 'Métodos Cuantitativos' },
+        { id: 12, name: 'Gestión de Contenidos Digitales' }, { id: 13, name: 'Gestión de Redes Sociales' },
+        { id: 14, name: 'Community Management' }, { id: 15, name: 'Estrategias de Monetización' },
+        { id: 16, name: 'Edición Multimedia' }, { id: 17, name: 'Diseño y Herramientas Visuales' },
+        { id: 18, name: 'Creación de Contenidos' }, { id: 19, name: 'Producción Audiovisual' },
+        { id: 20, name: 'Publicidad en Facebook Ads' }, { id: 21, name: 'Publicidad en Instagram' },
+        { id: 22, name: 'Publicidad en TikTok' }, { id: 23, name: 'Marketing y Publicidad en YouTube' },
+        { id: 24, name: 'Publicidad en Linkedin para Negocios' }, { id: 25, name: 'Publicidad en Snapchat Ads' },
+        { id: 26, name: 'Optimización de Campañas Publicitarias' }, { id: 27, name: 'Multiplataformas en Redes Sociales' },
+        { id: 28, name: 'Matemática Aplicada a la Ingeniería Ambiental' }, { id: 29, name: 'Estadística' },
+        { id: 30, name: 'Cálculo' }, { id: 31, name: 'Ecuaciones Diferenciales' },
+        { id: 32, name: 'Fundamentos' }, { id: 33, name: 'Métodos Numéricos' }, { id: 34, name: 'Programación' },
+        { id: 35, name: 'Modelado y Simulación de Sistemas' }, { id: 36, name: 'Edición y Diseño' },
+        { id: 37, name: 'Aplicaciones' }, { id: 38, name: 'Técnicas Básicas:' },
+        { id: 39, name: 'Operador de Maquinaria Pesada.' }, { id: 40, name: 'Redes y Conectividad' },
+        { id: 41, name: 'Redes y Comunicaciones' }, { id: 42, name: 'Comunicación' },
+        { id: 43, name: 'Sistemas y Tecnologías de la Información' }, { id: 44, name: 'Bases de Datos' },
+        { id: 45, name: 'Auditoria' }, { id: 46, name: 'Tecnologías Web' }, { id: 47, name: 'Tecnologías Web y Multimedia' },
+        { id: 48, name: 'Computación y Automatización' }, { id: 49, name: 'Diseño Electrónico y Circuitos' },
+        { id: 50, name: 'Herramientas ofimàticas' }, { id: 51, name: 'Diseño de Sistemas Financieros' },
+        { id: 52, name: 'Interpretación y Traducción de Idiomas' }, { id: 53, name: 'Traducción' },
+        { id: 54, name: 'Inglés Profesional Jurídico' }, { id: 55, name: 'Inglés Avanzado (CBA y Otros Institutos)' },
+        { id: 56, name: 'Francés Avanzado' }, { id: 57, name: 'Alemán Avanzado' }, { id: 58, name: 'Español' },
+        { id: 59, name: 'Italiano' }, { id: 60, name: 'Portugués' }, { id: 61, name: 'Ruso' },
+        { id: 62, name: 'Quechua' }, { id: 63, name: 'Aymara' }, { id: 64, name: 'Guarani' },
+        { id: 65, name: 'Oficios Técnicos' }, { id: 66, name: 'Instalación de Redes y Conectividad' },
+        { id: 67, name: 'Fundamentos de Repostería' }, { id: 68, name: 'Ingredientes y Química de Alimentos' },
+        { id: 69, name: 'Técnicas de Repostería' }, { id: 70, name: 'Pastelería Creativa' },
+        { id: 71, name: 'Postres Internacionales' }, { id: 72, name: 'Dietas Especiales y Saludables' },
+        { id: 73, name: 'Gestión de Negocios de Repostería' }, { id: 74, name: 'Seguridad e Higiene en Repostería' },
+        { id: 75, name: 'Psicología General' }, { id: 76, name: 'Psicología del Desarrollo' },
+        { id: 77, name: 'Psicología Clínica' }, { id: 78, name: 'Psicología Educativa' },
+        { id: 79, name: 'Psicología Organizacional' }, { id: 80, name: 'Psicología Social y Comunitaria' },
+        { id: 81, name: 'Psicología Forense' }, { id: 82, name: 'Dibujo y Técnicas Básicas' },
+        { id: 83, name: 'Pintura y Color' }, { id: 84, name: 'Escultura y Modelado' },
+        { id: 85, name: 'Arte y Diseño Gráfico' }, { id: 86, name: 'Historia del Arte' },
+        { id: 87, name: 'Técnicas Experimentales y Nuevas Tendencias' }, { id: 88, name: 'Fundamentos de la Colorimetría' },
+        { id: 89, name: 'Colorimetría Aplicada' }, { id: 90, name: 'Técnicas y Herramientas de Colorimetria' },
+        { id: 91, name: 'Colorimetría en la Industria' }, { id: 92, name: 'Color y Combinación Cromática' },
+        { id: 93, name: 'Publicidad y Branding' }, { id: 94, name: 'Marketing en Redes Sociales' },
+        { id: 95, name: 'Emprendimiento y Gestión de Negocios' }, { id: 96, name: 'Diseño y Comunicación Visual' },
+        { id: 97, name: 'Fotografía Digital y Edición' }, { id: 98, name: 'Creación de Contenido Digital' },
+        { id: 99, name: 'Artes Visuales y Diseño' }, { id: 100, name: 'Expresión Artística y Cultura' },
+        { id: 101, name: 'Filosofía y Desarrollo del Pensamiento' }, { id: 102, name: 'Formación Pedagógica y Didáctica' },
+        { id: 103, name: 'Traducción e Interpretación Profesional' }, { id: 104, name: 'Ingeniería y Medio Ambiente' },
+        { id: 105, name: 'Análisis de Datos y Estadística' }, { id: 106, name: 'Construcción y Mantenimiento' },
+        { id: 107, name: 'Mecánica y Reparaciones' }, { id: 108, name: 'Gastronomía y Reposteria' },
+        { id: 109, name: 'Estética y Moda' }, { id: 110, name: 'Entrenamiento Físico y Bienestar' },
+        { id: 111, name: 'Turismo y Naturaleza' }, { id: 112, name: 'Desarrollo Personal y Espiritualidad' },
+        { id: 113, name: 'Artes Escénicas y Actuación' }, { id: 114, name: 'Diseño y Producción de Videojuegos' }
+    ];
+    // --- Fin Variables de Estado para Mis Materias ---
+    
+    // Mapa de secciones para la búsqueda rápida
+    const sectionMap = [
+        { id: 'dashboard', label: 'Panel de Control / Resumen', keywords: ['dashboard', 'panel', 'inicio', 'ganancias', 'pagos', 'resumen', 'estadísticas'] },
+        { id: 'reservas', label: 'Gestión de Reservas y Disponibilidad', keywords: ['reservas', 'calendario', 'programar', 'disponibilidad', 'citas', 'materias', 'cursos'] },
+        { id: 'historial', label: 'Historial de Tutorías', keywords: ['historial', 'tutorías', 'clases pasadas', 'calificaciones', 'notas', 'evaluación'] },
+        { id: 'pagos', label: 'Gestión de Pagos', keywords: ['pagos', 'ingresos', 'retiros', 'saldo', 'transacciones', 'finanzas'] },
+        { id: 'perfil', label: 'Configuración de Perfil', keywords: ['perfil', 'cuenta', 'ajustes', 'configuración', 'datos personales', 'curriculum'] },
+    ];
+
+
+    // ----------------------------------------------------------------
+    // 2. Funciones de Utilidad (Modales, Gráficos, Alertas)
+    // ----------------------------------------------------------------
+
+    // Mensajes de alerta temporales (reemplaza alert())
+    function alertMessage(message, type = 'success') {
+        const bgColor = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-error' : 'bg-warning';
+        const alertBox = document.createElement('div');
+        alertBox.className = `fixed top-4 right-4 z-[100] p-4 rounded-xl text-text-light ${bgColor} shadow-lg transition-opacity duration-300`;
+        alertBox.textContent = message;
+        document.body.appendChild(alertBox);
+        setTimeout(() => {
+            alertBox.style.opacity = '0';
+            setTimeout(() => alertBox.remove(), 300);
+        }, 3000);
+    }
+    
+    function cleanupCanvas(id) {
+        const oldCanvas = document.getElementById(id);
+        if (!oldCanvas) {
+            // No es un error crítico si el canvas no existe en la vista actual
+            return null; 
+        }
+        const container = oldCanvas.parentElement;
+        oldCanvas.remove(); 
+        
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = id;
+        newCanvas.className = 'h-64'; // Se mantiene la clase de altura
+        container.appendChild(newCanvas);
+        return newCanvas.getContext('2d');
+    }
+
+    function createCharts() {
+        // Horas por Materia
+        const ctxMaterias = cleanupCanvas('chartMaterias');
+        if (ctxMaterias) {
+            new Chart(ctxMaterias, {
+                type: 'bar',
+                data: {
+                    labels: ['Cálculo', 'Álgebra', 'Programación', 'Ecuaciones'],
+                    datasets: [{
+                        label: 'Horas Totales de Tutoría',
+                        data: [10, 8, 15, 6],
+                        backgroundColor: ['#219EBC', '#FB8500', '#8ECAE6', '#023047'],
+                        borderRadius: 8,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { y: { beginAtZero: true } },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Nivel de Satisfacción
+        const ctxSatisfaccion = cleanupCanvas('chartSatisfaccion');
+        if (ctxSatisfaccion) {
+            new Chart(ctxSatisfaccion, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Muy Satisfecho', 'Satisfecho', 'Necesita Mejora'],
+                    datasets: [{
+                        data: [75, 20, 5],
+                        backgroundColor: ['#10B981', '#219EBC', '#FB8500'],
+                        hoverOffset: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+    }
+    
+    // Funciones de control de Modales
+    function openModal(modalId) {
+        document.getElementById(modalId)?.classList.remove('hidden');
+    }
+    function closeModal(modalId) {
+        document.getElementById(modalId)?.classList.add('hidden');
+    }
+    function openSearchModal() {
+        openModal('search-modal');
+        document.getElementById('search-input-modal')?.focus();
+    }
+    function closeSearchModal() {
+        closeModal('search-modal');
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('search-input-modal').value = '';
+    }
+
+    function configureQR() {
+        // Lógica para configurar y guardar datos de QR
+        // Aquí se simula un guardado
+        alertMessage('Configuración de QR guardada.', 'success');
+        closeModal('qr-modal');
+    }
+
+    // ----------------------------------------------------------------
+    // 3. Navegación y Funcionalidad de Búsqueda
+    // ----------------------------------------------------------------
+    
+    // Lógica para alternar la barra lateral (para vistas móviles)
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        sidebar.classList.toggle('-translate-x-full');
+        overlay.classList.toggle('hidden');
+    }
+    
+    // Función principal para cambiar de sección
+    function switchSection(sectionId) {
+        // 1. Ocultar todas las secciones de contenido
+        document.querySelectorAll('.content-section').forEach(section => {
+            section.classList.add('hidden');
+        });
+
+        // 2. Mostrar la sección solicitada
+        document.getElementById(sectionId)?.classList.remove('hidden');
+
+        // 3. Quitar el estado activo de todos los botones de navegación
+        document.querySelectorAll('.nav-button').forEach(button => {
+            button.classList.remove('active');
+        });
+
+        // 4. Activar el botón de navegación actual
+        const activeNavButton = document.querySelector(`.nav-button[onclick*="switchSection('${sectionId}')"]`);
+        if (activeNavButton) {
+            activeNavButton.classList.add('active');
+        }
+        
+        // 5. Actualizar el hash de la URL
+        window.history.pushState(null, null, `#${sectionId}`);
+        
+        // 6. Lógica especial de inicialización por sección
+        const viewTitle = document.getElementById('view-title');
+        const sectionData = sectionMap.find(s => s.id === sectionId);
+        if (viewTitle && sectionData) {
+            viewTitle.textContent = sectionData.label;
+        }
+
+        if (sectionId === 'dashboard') {
+            createCharts();
+        } else if (sectionId === 'reservas') {
+             // Por defecto, mostrar Mis Reservas
+             switchReservaTab('mis'); 
+        } else if (sectionId === 'perfil') {
+             // Por defecto, mostrar Detalles
+             switchProfileTab('detalles');
+             // Cargar datos si ya están disponibles
+             if (window.currentProfileData) {
+                 window.updateProfileForm(window.currentProfileData);
+             }
+        }
+        
+        // Cerrar sidebar en móvil después de navegar
+        if (!document.getElementById('sidebar').classList.contains('-translate-x-full')) {
+            toggleSidebar();
+        }
+    }
+
+    // Manejar el cambio de hash de URL (ej. si el usuario usa el botón 'atrás' o carga una URL específica)
+    function handleHashChange() {
+        const hash = window.location.hash.replace('#', '');
+        
+        let sectionId = 'dashboard';
+        let subSection = 'detalles';
+
+        if (hash.startsWith('perfil/')) {
+            sectionId = 'perfil';
+            subSection = hash.split('/')[1];
+            switchProfileTab(subSection);
+        } else if (sectionMap.some(s => s.id === hash)) {
+            sectionId = hash;
+        }
+        
+        // La navegación principal llama a switchSection, que luego maneja la sub-sección.
+        // Si ya estamos en 'perfil', switchSection no tiene que hacer mucho, solo update el título.
+        if (document.getElementById(sectionId)?.classList.contains('hidden')) {
+             switchSection(sectionId);
+        } else {
+             // Solo actualiza el título si ya está visible la sección (ej. si solo cambia el hash de la subsección)
+             const viewTitle = document.getElementById('view-title');
+             const sectionData = sectionMap.find(s => s.id === sectionId);
+             if (viewTitle && sectionData) {
+                 viewTitle.textContent = sectionData.label;
+             }
+             if (sectionId === 'perfil') {
+                 // Asegura que la pestaña correcta se active si se navegó a #perfil/otra
+                 switchProfileTab(subSection);
+             }
+        }
+    }
+
+
+    function quickSearch() {
+        const query = document.getElementById('search-input-modal').value.toLowerCase().trim();
+        const resultsContainer = document.getElementById('search-results');
+        resultsContainer.innerHTML = '';
+
+        if (query.length < 2) {
+            resultsContainer.innerHTML = '<p class="text-gray-500 text-sm">Ingresa al menos 2 caracteres para buscar.</p>';
+            return;
+        }
+
+        const filteredResults = sectionMap.filter(section => 
+            section.keywords.some(keyword => keyword.includes(query)) || 
+            section.label.toLowerCase().includes(query)
+        );
+
+        if (filteredResults.length > 0) {
+            filteredResults.forEach(result => {
+                const button = document.createElement('button');
+                button.onclick = () => {
+                    switchSection(result.id);
+                    closeSearchModal();
+                };
+                button.className = 'w-full text-left p-3 rounded-xl hover:bg-tertiary-color transition-colors flex items-center group';
+                button.innerHTML = `
+                    <i data-lucide="${result.id === 'reservas' ? 'calendar-check' : result.id === 'perfil' ? 'user' : result.id === 'pagos' ? 'wallet' : result.id === 'historial' ? 'clock-history' : 'layout-dashboard'}" 
+                       class="w-5 h-5 mr-3 text-primary-color group-hover:text-secondary-color"></i>
+                    <span class="font-medium text-text-dark">${result.label}</span>
+                `;
+                resultsContainer.appendChild(button);
+            });
+            // Recreate Lucide icons for the search results
+            lucide.createIcons(); 
+        } else {
+            resultsContainer.innerHTML = `
+                <div class="p-4 text-center text-gray-500">
+                    No se encontraron resultados para "${query}".
+                </div>
+            `;
+        }
+    }
+    // ----------------------------------------------------------------
+        // 4. Lógica de Guardado (Por Pestaña)
+        // ----------------------------------------------------------------
+
+        // --- 4.1. Detalles personales ---
+        window.updateProfileForm = function(data) {
+            const profileForm = document.getElementById('personal-details-form');
+            if (!profileForm) return;
+
+            // Rellenar selectores *antes* de establecer sus valores
+            populateSelect('motherTongue', LANGUAGE_OPTIONS);
+            populateSelect('motto', MOTTO_OPTIONS, true);
+            populateSelect('otherLanguages', LANGUAGE_OPTIONS);
+
+            // Llenar campos
+            profileForm.elements['name'].value = data.name || '';
+            profileForm.elements['lastName'].value = data.lastName || '';
+            profileForm.elements['email'].value = data.email || ''; 
+            profileForm.elements['phone'].value = data.phone || '';
+            
+            // Género
+            const gender = data.gender || 'Masculino';
+            profileForm.querySelectorAll('input[name="gender"]').forEach(radio => {
+                radio.checked = radio.value === gender;
+            });
+
+            profileForm.elements['bio'].value = data.bio || '';
+            
+            // Si el valor de motherTongue existe en la data, lo asignamos. Si no, quedará el placeholder.
+            if (data.motherTongue) {
+                 profileForm.elements['motherTongue'].value = data.motherTongue;
+            } else {
+                 profileForm.elements['motherTongue'].value = ""; // Vuelve al placeholder
+            }
+            
+            // Si el valor de motto existe en la data, lo asignamos. Si no, quedará el placeholder.
+            if (data.motto && MOTTO_OPTIONS.includes(data.motto)) {
+                 profileForm.elements['motto'].value = data.motto;
+            } else {
+                 profileForm.elements['motto'].value = MOTTO_OPTIONS[0]; // Vuelve al placeholder
+            }
+
+
+            const otherLangs = data.otherLanguages || [];
+            Array.from(profileForm.elements['otherLanguages'].options).forEach(option => {
+                option.selected = otherLangs.includes(option.value);
+            });
+
+            // Ocultar mensaje de error
+            document.getElementById('phone-error')?.classList.add('hidden');
+        }
+
+        window.savePersonalDetails = async function() {
+            const profileForm = document.getElementById('personal-details-form');
+            const tutorRef = window.getTutorRef();
+            if (!profileForm || !tutorRef) return;
+
+            const phoneInput = profileForm.elements['phone'];
+            const phoneError = document.getElementById('phone-error');
+            
+            const selectedLanguages = Array.from(profileForm.elements['otherLanguages'].options)
+                .filter(option => option.selected)
+                .map(option => option.value);
+
+            const data = {
+                name: profileForm.elements['name'].value.trim(),
+                lastName: profileForm.elements['lastName'].value.trim(),
+                email: profileForm.elements['email'].value.trim(),
+                phone: phoneInput.value.trim(),
+                gender: profileForm.elements['gender'].value,
+                bio: profileForm.elements['bio'].value.trim(),
+                motherTongue: profileForm.elements['motherTongue'].value,
+                motto: profileForm.elements['motto'].value,
+                otherLanguages: selectedLanguages,
+            };
+
+            // Validación: El campo Número de teléfono es obligatorio
+            if (!data.phone) {
+                alertMessage("El campo Número de teléfono es obligatorio.", 'error');
+                phoneError.classList.remove('hidden');
+                phoneInput.classList.add('border-error', 'ring-1', 'ring-error');
+                return;
+            } else {
+                phoneError.classList.add('hidden');
+                phoneInput.classList.remove('border-error', 'ring-1', 'ring-error');
+            }
+            
+            // Validación: El lema no puede ser el placeholder
+            if (data.motto === MOTTO_OPTIONS[0]) {
+                 alertMessage("Por favor, elija un lema de la lista.", 'error');
+                 return;
+            }
+
+            try {
+                // Actualizar Firestore
+                await setDoc(tutorRef, data, { merge: true });
+                alertMessage('Detalles personales actualizados con éxito.', 'success');
+                // La función loadInitialData (con el listener) se encargará de actualizar el formulario.
+                // No es necesario llamar a window.handleHashChange() aquí.
+            } catch (error) {
+                console.error("Error al guardar detalles personales:", error);
+                alertMessage('Error al guardar: ' + error.message, 'error');
+            }
+        }
+
+        // --- 4.2. Configuraciones de la cuenta ---
+        
+        // Función para actualizar el formulario de Ajustes
+        window.updateAccountForm = function(data) {
+             const paymentForm = document.getElementById('payment-preferences-form');
+             const autoAcceptToggle = document.getElementById('auto-accept-reservas');
+             
+             if (paymentForm) {
+                 // Asegurar que el método de pago seleccionado coincida con el valor guardado
+                 paymentForm.elements['paymentMethod'].value = data.paymentMethod || 'credit_card';
+             }
+             if (autoAcceptToggle) {
+                 // Estado del toggle
+                 autoAcceptToggle.checked = data.autoAcceptReservations === true;
+             }
+        }
+
+        // Simulación de la función de Firebase para actualizar contraseña
+        // En un entorno real, Firebase SDK provee `updatePassword`
+        window.updatePassword = async (user, newPassword) => {
+             // Esto es una simulación de API. En el frontend de un proyecto real,
+             // esta operación puede requerir una re-autenticación reciente.
+             console.log(`Simulación: Intentando actualizar contraseña para UID: ${user.uid}`);
+             return new Promise((resolve, reject) => {
+                 setTimeout(() => {
+                     if (newPassword === 'fail') {
+                         reject(new Error("Firebase: Error (auth/requires-recent-login)."));
+                     } else {
+                         // Simular éxito
+                         resolve();
+                     }
+                 }, 500);
+             });
+        }
+
+
+        window.saveAccountSettings = async function() {
+            const passwordForm = document.getElementById('password-form');
+            const paymentForm = document.getElementById('payment-preferences-form');
+            const autoAcceptToggle = document.getElementById('auto-accept-reservas');
+            const tutorRef = window.getTutorRef();
+            if (!passwordForm || !paymentForm || !tutorRef) return;
+
+            let successMessage = "";
+            let updateNeeded = false;
+
+            // 1. Lógica de cambio de contraseña 
+            const currentPassword = passwordForm.elements['currentPassword'].value;
+            const newPassword = passwordForm.elements['newPassword'].value;
+            const confirmPassword = passwordForm.elements['confirmPassword'].value;
+
+            if (newPassword || confirmPassword || currentPassword) {
+                if (!currentPassword) {
+                    alertMessage("La contraseña actual es requerida para el cambio.", 'error');
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    alertMessage("Las nuevas contraseñas no coinciden.", 'error');
+                    return;
+                }
+                if (newPassword.length < 6) {
+                    alertMessage("La nueva contraseña debe tener al menos 6 caracteres.", 'error');
+                    return;
+                }
+                
+                // Intento de actualización de contraseña de Firebase
+                if (window.auth.currentUser) {
+                    try {
+                        // En un entorno real se usaría:
+                        // 1. Reautenticar (requiere email/password o credenciales recientes)
+                        // 2. await updatePassword(window.auth.currentUser, newPassword);
+                        
+                        // Aquí solo simulamos el éxito. En un entorno real, la lógica de re-autenticación es compleja.
+                        successMessage += "Contraseña actualizada (simulado). ";
+                        passwordForm.reset();
+                    } catch (error) {
+                        console.error("Error al actualizar contraseña:", error);
+                        alertMessage("Error al actualizar la contraseña: " + error.message, 'error');
+                        return; // Detener si la contraseña falla
+                    }
+                } else {
+                    alertMessage("Error: Usuario no autenticado para cambiar contraseña.", 'error');
+                    return;
+                }
+            }
+
+            // 2. Lógica de preferencias de pago y auto-aceptar (Se guarda en Firestore)
+            const paymentMethod = paymentForm.elements['paymentMethod'].value;
+            const autoAcceptReservations = autoAcceptToggle.checked;
+
+            const updateData = {
+                paymentMethod: paymentMethod,
+                autoAcceptReservations: autoAcceptReservations
+            };
+
+            const currentData = window.currentProfileData || {};
+
+            // Comprobar si hay cambios para guardar en Firestore
+            if (paymentMethod !== currentData.paymentMethod || autoAcceptReservations !== currentData.autoAcceptReservations) {
+                updateNeeded = true;
+                try {
+                    await setDoc(tutorRef, updateData, { merge: true });
+                    successMessage += "Preferencias guardadas. ";
+                } catch (error) {
+                    console.error("Error al guardar ajustes:", error);
+                    alertMessage('Error al guardar ajustes de la cuenta: ' + error.message, 'error');
+                    return;
+                }
+            }
+            
+            if (successMessage.trim() !== "") {
+                alertMessage(successMessage.trim(), 'success');
+            } else if (!updateNeeded && !newPassword) {
+                alertMessage("No se detectaron cambios para guardar.", 'info');
+            }
+        }
+        
+        // --- 4.3. Aspectos destacados del currículum ---
+        window.saveCurriculumHighlights = async function() {
+            // Este es un placeholder. En un entorno real, se gestionaría la adición/eliminación de ítems de experiencia/educación.
+            alertMessage("Guardado simulado. En un entorno real se procesarían los ítems del currículum.", 'info');
+        }
+
+        // --- 4.4. Verificación de identidad ---
+        window.startVerification = function() {
+            alertMessage("Iniciando proceso de verificación de identidad. Funcionalidad simulada.", 'info');
+        }
+
+
+        // ----------------------------------------------------------------
+        // 5. Lógica de Tabs (Reservas y Perfil)
+        // ----------------------------------------------------------------
+
+        // Función para cambiar entre las pestañas de Reservas
+        function switchReservaTab(tabName) {
+            // 1. Ocultar todos los contenidos de las pestañas
+            document.querySelectorAll('.reserva-tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            // 2. Desactivar el estilo de todos los botones de las pestañas
+            document.querySelectorAll('.reserva-tab').forEach(button => {
+                button.classList.remove('active-reserva-tab');
+                button.classList.add('text-gray-500', 'hover:text-primary-color/80');
+            });
+
+            // 3. Mostrar el contenido de la pestaña actual
+            document.getElementById(`reserva-content-${tabName}`)?.classList.remove('hidden');
+
+            // 4. Activar el estilo del botón de la pestaña actual
+            document.getElementById(`reserva-tab-${tabName}`)?.classList.add('active-reserva-tab');
+            document.getElementById(`reserva-tab-${tabName}`)?.classList.remove('text-gray-500', 'hover:text-primary-color/80');
+            
+            // 5. Lógica especial
+            if (tabName === 'materias') {
+                // Inicializar la lista de materias si la pestaña de materias se activa
+                renderMisMaterias();
+                document.getElementById('materias-search-input')?.addEventListener('input', (e) => {
+                    renderMisMaterias(e.target.value);
+                });
+            }
+        }
+
+        // Función para cambiar entre las pestañas de Perfil
+        function switchProfileTab(tabName) {
+            // 1. Ocultar todos los contenidos de las pestañas
+            document.querySelectorAll('.profile-sub-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // 2. Desactivar el estilo de todos los botones/enlaces de las pestañas
+            document.querySelectorAll('.profile-tab').forEach(button => {
+                button.classList.remove('active-profile-tab');
+            });
+
+            // 3. Mostrar el contenido de la pestaña actual
+            const contentId = `content-${tabName.replace(/-/g, '-')}`;
+            document.getElementById(contentId)?.classList.remove('hidden');
+
+            // 4. Activar el estilo del botón/enlace de la pestaña actual
+            const tabId = `tab-${tabName.replace(/-/g, '-')}`;
+            document.getElementById(tabId)?.classList.add('active-profile-tab');
+            
+            // 5. Actualizar la URL sin recargar la página
+            const newHash = `#perfil/${tabName}`;
+            if (window.location.hash !== newHash) {
+                window.history.pushState(null, null, newHash);
+            }
+            
+            // 6. Cargar datos específicos de la sub-sección
+            if (window.currentProfileData) {
+                if (tabName === 'detalles') {
+                    window.updateProfileForm(window.currentProfileData);
+                } else if (tabName === 'account-settings') {
+                    window.updateAccountForm(window.currentProfileData);
+                }
+            }
+        }
+
+        function saveNotes() {
+            alertMessage('Notas autoguardadas.', 'info');
+            // Aquí iría la lógica de guardado real (e.g., Firestore update)
+        }
+        
+        // ----------------------------------------------------------------
+        // 6. LÓGICA DE GESTIÓN DE MATERIAS
+        // ----------------------------------------------------------------
+
+        // Maneja la adición de una materia
+        function handleAddSubject(subjectId) {
+            const id = parseInt(subjectId);
+            if (selectedSubjectIds.length >= MAX_SUBJECTS) {
+                alertMessage('Alcanzaste el límite de 40 materias asignadas.', 'error');
+                return;
+            }
+            if (!selectedSubjectIds.includes(id)) {
+                selectedSubjectIds.push(id);
+                // alertMessage(`Materia ID ${id} añadida.`, 'success'); // Comentado para no saturar
+            }
+            // Rerender ambas listas para reflejar el cambio
+            renderMisMaterias(document.getElementById('materias-search-input')?.value || '');
+        }
+
+        // Maneja la eliminación de una materia
+        function handleRemoveSubject(subjectId) {
+            const id = parseInt(subjectId);
+            const index = selectedSubjectIds.indexOf(id);
+            if (index > -1) {
+                selectedSubjectIds.splice(index, 1);
+                // alertMessage(`Materia ID ${id} eliminada.`, 'warning'); // Comentado para no saturar
+            }
+            // Rerender ambas listas para reflejar el cambio
+            renderMisMaterias(document.getElementById('materias-search-input')?.value || '');
+        }
+
+        // Renderiza las listas de materias seleccionadas y disponibles
+        function renderMisMaterias(query = '') {
+            const availableList = document.getElementById('available-subjects-list');
+            const selectedList = document.getElementById('selected-subjects-list');
+            const counter = document.getElementById('subjects-counter');
+            const lowerCaseQuery = query.toLowerCase();
+            if (!availableList || !selectedList || !counter) return;
+
+            // 1. Actualizar contador
+            counter.textContent = `(${selectedSubjectIds.length} / ${MAX_SUBJECTS})`;
+
+            // 2. Materias Seleccionadas (filtradas por búsqueda si aplica)
+            const filteredSelectedSubjects = ALL_SUBJECT_GROUPS.filter(subject => 
+                selectedSubjectIds.includes(subject.id) && 
+                (lowerCaseQuery === '' || subject.name.toLowerCase().includes(lowerCaseQuery))
+            );
+
+            if (selectedSubjectIds.length === 0) {
+                 selectedList.innerHTML = `
+                    <div class="p-4 text-center text-gray-500 mt-10">
+                        Aún no has añadido ninguna materia. Utiliza el buscador de abajo.
+                    </div>
+                 `;
+            } else if (filteredSelectedSubjects.length === 0 && lowerCaseQuery !== '') {
+                 selectedList.innerHTML = `
+                    <div class="p-4 text-center text-gray-500 mt-10">
+                        Ninguna de tus materias seleccionadas coincide con la búsqueda.
+                    </div>
+                 `;
+            } else {
+                 selectedList.innerHTML = filteredSelectedSubjects.map(subject => {
+                    const buttonHtml = `
+                        <button onclick="handleRemoveSubject(${subject.id})" class="text-error hover:text-error/80 transition-colors flex items-center text-sm font-medium">
+                            <i data-lucide="minus-circle" class="w-4 h-4 mr-1"></i> Eliminar
+                        </button>
+                    `;
+                    return `
+                        <div class="p-3 border-b border-gray-200 flex justify-between items-center bg-white rounded-lg transition-colors hover:shadow-sm">
+                            <p class="font-medium text-primary-color">${subject.name}</p>
+                            ${buttonHtml}
+                        </div>
+                    `;
+                 }).join('');
+            }
+
+
+            // 3. Materias Disponibles (no seleccionadas, filtradas por búsqueda)
+            const filteredAvailableSubjects = ALL_SUBJECT_GROUPS.filter(subject => 
+                !selectedSubjectIds.includes(subject.id) && 
+                (lowerCaseQuery === '' || subject.name.toLowerCase().includes(lowerCaseQuery))
+            );
+
+            // Renderizado de lista de disponibles
+            availableList.innerHTML = filteredAvailableSubjects.map(subject => {
+                const buttonHtml = `
+                    <button onclick="handleAddSubject(${subject.id})" class="text-secondary-color hover:text-secondary-color/80 transition-colors flex items-center text-sm font-medium">
+                        <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> Añadir
+                    </button>
+                `;
+                return `
+                    <div class="p-3 border-b border-gray-200 flex justify-between items-center transition-colors hover:bg-gray-100/50">
+                        <p class="font-medium">${subject.name}</p>
+                        ${buttonHtml}
+                    </div>
+                `;
+            }).join('');
+
+            // Si no hay resultados de búsqueda para disponibles
+            if (filteredAvailableSubjects.length === 0) {
+                availableList.innerHTML = `
+                    <div class="p-4 text-center text-gray-500 mt-10">
+                        No se encontraron materias que coincidan con la búsqueda o ya están todas seleccionadas.
+                    </div>
+                `;
+            }
+
+            // Recreate Lucide icons for the new elements (important!)
+            lucide.createIcons();
+        }
+
+        // ----------------------------------------------------------------
+        // 7. Inicialización de la Interfaz
+        // ----------------------------------------------------------------
+        window.onload = function() {
+            // Inicializa Firebase y la autenticación
+            if (typeof initializeAndAuthenticate === 'function') {
+                initializeAndAuthenticate();
+            }
+
+            // Listener para la navegación por URL hash
+            window.addEventListener('hashchange', handleHashChange);
+
+            // Inicializa la vista por defecto (esto se puede mover después de la autenticación si se requiere data de Firebase)
+            // Si no hay hash, se va a 'dashboard'. Si hay, handleHashChange lo gestiona.
+            handleHashChange();
+
+            // Inicializa el estado por defecto de las pestañas de Perfil
+            // Esto asegura que la primera pestaña esté activa al cargar la sección
+            // switchProfileTab('detalles'); // Ya se llama en handleHashChange y switchSection
+
+            // Lógica de navegación con teclado para el modal de búsqueda (opcional pero mejora UX)
+            document.addEventListener('keydown', (e) => {
+                // Ctrl+K o Cmd+K para abrir búsqueda
+                if (e.key === 'k' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    openSearchModal();
+                }
+                // Escape para cerrar cualquier modal
+                if (e.key === 'Escape') {
+                    const activeModals = document.querySelectorAll('.modal:not(.hidden)');
+                    activeModals.forEach(modal => {
+                        modal.classList.add('hidden');
+                    });
+                }
+            });
+
+            // Toggle del dropdown de perfil
+            const btnToggleProfile = document.getElementById('btn-toggle-profile');
+            const profileDropdown = document.getElementById('profile-dropdown');
+            if (btnToggleProfile && profileDropdown) {
+                btnToggleProfile.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Evita que se cierre inmediatamente por el listener del documento
+                    const isHidden = profileDropdown.classList.contains('hidden');
+                    // Toggle visibility
+                    if (isHidden) {
+                        profileDropdown.classList.remove('hidden');
+                        setTimeout(() => {
+                             profileDropdown.classList.remove('opacity-0', 'translate-y-2');
+                        }, 10); // Pequeño retraso para la animación
+                    } else {
+                        profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                        setTimeout(() => {
+                             profileDropdown.classList.add('hidden');
+                        }, 200); // Esperar a que termine la animación
+                    }
+                });
+
+                // Cierra el dropdown si se hace clic fuera
+                document.addEventListener('click', (e) => {
+                    if (profileDropdown && !profileDropdown.classList.contains('hidden') && !btnToggleProfile.contains(e.target)) {
+                         profileDropdown.classList.add('opacity-0', 'translate-y-2');
+                         setTimeout(() => {
+                              profileDropdown.classList.add('hidden');
+                         }, 200);
+                    }
+                });
+            }
+            
+            // Asignar el handler de logout al botón
+            const logoutButton = document.getElementById('logout-button');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (window.Usuario && window.Usuario.handleLogout) {
+                        window.Usuario.handleLogout();
+                    }
+                });
+            }
+
+
+            // Renderiza los íconos de Lucide en toda la página
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        // Se agregan las funciones al scope global para que funcionen con onclick
+        window.toggleSidebar = toggleSidebar;
+        window.switchSection = switchSection;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.openSearchModal = openSearchModal;
+        window.closeSearchModal = closeSearchModal;
+        window.quickSearch = quickSearch;
+        window.switchReservaTab = switchReservaTab;
+        window.switchProfileTab = switchProfileTab;
+        window.handleAddSubject = handleAddSubject;
+        window.handleRemoveSubject = handleRemoveSubject;
+        window.saveNotes = saveNotes;
+        window.configureQR = configureQR;
+    </script>
+</head>
+<body class="flex">
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black bg-opacity-50 z-20 hidden md:hidden"></div>
+    
+    <aside id="sidebar" class="fixed top-0 left-0 h-full bg-primary-color text-text-light flex flex-col p-4 z-30 w-64 md:w-56 transition-transform duration-300 transform -translate-x-full md:translate-x-0">
+        <div class="flex items-center justify-between h-16 mb-6">
+            <img src="./Img/TugoLogo.png" alt="Logo" class="w-10 h-10 rounded-full border-2 border-tertiary-color2">
+            <div class="logo-border text-2xl font-black text-tertiary-color2 rounded-xl">ClassGo!</div>
+            <button onclick="toggleSidebar()" class="p-2 rounded-full hover:bg-secondary-color/20 text-text-light md:hidden">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <nav class="flex-grow space-y-2">
+            <button onclick="switchSection('dashboard')" class="flex items-center w-full p-2 rounded-xl text-left nav-button active">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 mr-3"></i> Panel
+            </button>
+            <button onclick="switchSection('reservas')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="calendar-check" class="w-5 h-5 mr-3"></i> Gestión de Reservas
+            </button>
+            <button onclick="switchSection('historial')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="clock-history" class="w-5 h-5 mr-3"></i> Historial de Tutorías
+            </button>
+            <button onclick="switchSection('pagos')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="wallet" class="w-5 h-5 mr-3"></i> Gestión de Pagos
+            </button>
+            <button onclick="switchSection('perfil')" class="flex items-center w-full p-2 rounded-xl text-left nav-button">
+                <i data-lucide="user" class="w-5 h-5 mr-3"></i> Configuración de Perfil
+            </button>
+            <!-- Botón para la sección Curso (visible por defecto) -->
+            <button id="nav-curso" onclick="switchSection('curso')" class="flex items-center w-full p-3 rounded-xl text-left nav-button active">
+                <i data-lucide="graduation-cap" class="w-5 h-5 mr-3"></i> Curso
+            </button>
+        </nav>
+        
+        <div class="mt-8 pt-4 border-t border-secondary-color/20">
+            <button onclick="openModal('qr-modal')" class="flex items-center w-full p-2 rounded-xl text-left hover:bg-secondary-color/20 transition-colors">
+                <i data-lucide="qr-code" class="w-5 h-5 mr-3 text-tertiary-color2"></i>
+                <span class="font-medium text-tertiary-color2">Mi Código QR</span>
+            </button>
+        </div>
+    </aside>
+    
+
+    <div class="flex-1 md:ml-56 flex flex-col min-h-screen">
+        <header class="h-16 bg-white shadow-sm flex items-center justify-between p-4 sticky top-0 z-10 border-b border-gray-200">
+            <button onclick="toggleSidebar()" class="p-2 rounded-full hover:bg-gray-100 text-primary-color md:hidden">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+            <h1 id="view-title" class="text-xl font-bold text-primary-color transition-colors">Panel de Control / Resumen</h1>
+            
+            <div class="flex items-center space-x-4">
+                <button onclick="openSearchModal()" class="p-2 rounded-full hover:bg-gray-100 text-gray-700 transition-colors hidden sm:flex items-center bg-gray-50 border border-gray-200 text-sm">
+                    <i data-lucide="search" class="w-4 h-4 mr-2 text-gray-500"></i>
+                    Buscar... <span class="ml-4 text-xs bg-gray-200 px-2 py-0.5 rounded-md text-gray-600">⌘K</span>
+                </button>
+                <button class="p-2 rounded-full hover:bg-gray-100 text-gray-700 transition-colors">
+                    <i data-lucide="bell" class="w-5 h-5"></i>
+                </button>
+                
+                <div class="relative">
+                    <button id="btn-toggle-profile" class="flex items-center space-x-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors border-2 border-primary-color">
+                        <img src="https://placehold.co/40x40/023047/DEE2E6?text=T" alt="Avatar" class="w-8 h-8 rounded-full object-cover">
+                        <span id="tutor-name-display-header" class="font-medium text-primary-color hidden md:inline">Tutor</span>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-gray-500 mr-1 hidden md:inline"></i>
+                    </button>
+                    <div id="profile-dropdown" class="dropdown-menu absolute right-0 mt-3 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 p-2 hidden opacity-0 translate-y-2 transition-all duration-200">
+                        <button onclick="switchSection('perfil')" class="flex items-center w-full p-2 text-primary-color hover:bg-tertiary-color rounded-lg transition-colors">
+                            <i data-lucide="user" class="w-4 h-4 mr-2"></i> Ver Perfil
+                        </button>
+                        <button onclick="switchSection('perfil'); switchProfileTab('account-settings');" class="flex items-center w-full p-2 text-primary-color hover:bg-tertiary-color rounded-lg transition-colors">
+                            <i data-lucide="settings" class="w-4 h-4 mr-2"></i> Ajustes
+                        </button>
+                        <hr class="my-2 border-gray-100">
+                        <button id="logout-button" class="flex items-center w-full p-2 text-error hover:bg-red-50 rounded-lg transition-colors">
+                            <i data-lucide="log-out" class="w-4 h-4 mr-2"></i> Desconexión
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 bg-secondary-color2">
+
+            <section id="dashboard" class="content-section">
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-primary-color flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Tutorias</p>
+                                <p class="text-3xl font-bold text-primary-color mt-1">125</p>
+                            </div>
+                            <div class="p-3 rounded-full bg-primary-color/10 text-primary-color">
+                                <i data-lucide="bookmark-check" class="w-6 h-6"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-success flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Ingresos Totales</p>
+                                <p class="text-3xl font-bold text-primary-color mt-1">$4,850</p>
+                            </div>
+                            <div class="p-3 rounded-full bg-success/10 text-success">
+                                <i data-lucide="piggy-bank" class="w-6 h-6"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-warning flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Próximas Reservas</p>
+                                <p class="text-3xl font-bold text-primary-color mt-1">7</p>
+                            </div>
+                            <div class="p-3 rounded-full bg-warning/10 text-warning">
+                                <i data-lucide="calendar" class="w-6 h-6"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl card-shadow border-l-4 border-tertiary-color2 flex justify-between items-center card-hover transition-all">
+                            <div>
+                                <p class="text-sm font-medium text-gray-500">Calificación Promedio</p>
+                                <p class="text-3xl font-bold text-primary-color mt-1">4.8</p>
+                            </div>
+                            <div class="p-3 rounded-full bg-tertiary-color2/10 text-tertiary-color2">
+                                <i data-lucide="star" class="w-6 h-6 fill-tertiary-color2"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-2 bg-white p-6 rounded-xl card-shadow">
+                            <h2 class="text-xl font-semibold mb-4 text-primary-color">Horas de Tutoría por Materia (Últimos 30 días)</h2>
+                            <div class="h-64">
+                                <canvas id="chartMaterias"></canvas>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-xl card-shadow">
+                            <h2 class="text-xl font-semibold mb-4 text-primary-color">Actividad Reciente</h2>
+                            <ul class="space-y-4">
+                                <li class="p-3 rounded-xl hover:bg-gray-50 flex justify-between items-center border-l-4 border-success">
+                                    <div class="flex items-center space-x-3">
+                                        <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
+                                        <div>
+                                            <p class="font-medium">Reserva Confirmada</p>
+                                            <p class="text-sm text-gray-600">Cálculo Diferencial - Hoy, 18:00</p>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li class="p-3 rounded-xl hover:bg-gray-50 flex justify-between items-center border-l-4 border-tertiary-color2">
+                                    <div class="flex items-center space-x-3">
+                                        <i data-lucide="wallet" class="w-5 h-5 text-tertiary-color2"></i>
+                                        <div>
+                                            <p class="font-medium">Retiro de $150.00 Aprobado</p>
+                                            <p class="text-sm text-gray-600">Procesado a su cuenta bancaria</p>
+                                        </div>
+                                    </div>
+                                </li>
+                                <li class="p-3 rounded-xl hover:bg-gray-50 flex justify-between items-center border-l-4 border-warning">
+                                    <div class="flex items-center space-x-3">
+                                        <i data-lucide="clock" class="w-5 h-5 text-warning"></i>
+                                        <div>
+                                            <p class="font-medium">Programación C++ - Estudiante B</p>
+                                            <p class="text-sm text-gray-600">Mañana, 10:00 - Pendiente</p>
+                                        </div>
+                                    </div>
+                                </li>
+                            </ul>
+                            <button onclick="switchSection('historial')" class="mt-4 text-secondary-color hover:text-secondary-color/80 text-sm font-medium flex items-center">
+                                Ver todo el historial <i data-lucide="arrow-right" class="w-4 h-4 ml-2"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white p-6 rounded-xl card-shadow lg:col-span-1">
+                            <h2 class="text-xl font-semibold mb-4 text-primary-color">Nivel de Satisfacción de Estudiantes</h2>
+                            <div class="h-64 flex items-center justify-center">
+                                <canvas id="chartSatisfaccion"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-xl card-shadow lg:col-span-2">
+                            <h2 class="text-xl font-semibold mb-4 text-primary-color">Notas Importantes (Solo para ti)</h2>
+                            <textarea id="tutor-notes" rows="6" oninput="saveNotes()" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-secondary-color focus:border-secondary-color" placeholder="Escribe aquí tus recordatorios, metas o notas privadas. Se guardan automáticamente.">Preparar material de Álgebra Lineal para el próximo lunes. Actualizar mis tarifas para Cálculo Avanzado. Revisar el calendario para las vacaciones de fin de año.</textarea>
+                            <p class="text-xs text-gray-500 mt-2">Guardado automático.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="reservas" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Gestión De Reservas</h2>
+                    
+                    <div class="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap space-x-4">
+                        <button id="reserva-tab-programar" onclick="switchReservaTab('programar')" class="reserva-tab py-2 px-4 font-medium text-gray-500 hover:text-primary-color/80 transition-colors"> Programar Disponibilidad </button>
+                        <button id="reserva-tab-mis" onclick="switchReservaTab('mis')" class="reserva-tab py-2 px-4 font-medium active-reserva-tab transition-colors"> Mis Reservas (Próximas) </button>
+                        <button id="reserva-tab-materias" onclick="switchReservaTab('materias')" class="reserva-tab py-2 px-4 font-medium text-gray-500 hover:text-primary-color/80 transition-colors"> Mis Materias </button>
+                    </div>
+
+                    <div id="reserva-content-programar" class="reserva-tab-content hidden">
+                        <p class="text-gray-600 mb-6">Configura tus horarios disponibles para tutorías. Bloquea o añade espacios en tu calendario.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-secondary-color2 p-4 rounded-xl border border-gray-300">
+                                <h4 class="font-semibold mb-3 text-primary-color">Tu Calendario Semanal</h4>
+                                <div class="bg-white p-4 rounded-lg text-center text-sm text-gray-500 min-h-[200px] flex items-center justify-center">
+                                    [Aquí iría un componente de calendario interactivo para configurar bloques de tiempo]
+                                </div>
+                                <button class="mt-4 w-full bg-primary-color text-text-light px-4 py-2 rounded-xl hover:bg-primary-color/90">Guardar Horarios</button>
+                            </div>
+                            <div class="p-4 rounded-xl">
+                                <h4 class="font-semibold mb-3 text-primary-color">Opciones de Reserva</h4>
+                                <div class="space-y-4">
+                                    <div class="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-200">
+                                        <p class="text-sm font-medium">Auto-Aceptar Reservas</p>
+                                        <div class="relative">
+                                            <input type="checkbox" id="toggle-auto-accept" class="toggle-checkbox" checked>
+                                            <label for="toggle-auto-accept" class="toggle-label bg-gray-300 rounded-full"></label>
+                                        </div>
+                                    </div>
+                                    <div class="p-3 bg-white rounded-xl border border-gray-200">
+                                        <label for="min-notice" class="block text-sm font-medium mb-2">Aviso Mínimo de Reserva</label>
+                                        <select id="min-notice" class="w-full p-2 border border-gray-300 rounded-xl focus:ring-secondary-color focus:border-secondary-color">
+                                            <option>1 hora antes</option>
+                                            <option selected>3 horas antes</option>
+                                            <option>6 horas antes</option>
+                                            <option>12 horas antes</option>
+                                            <option>24 horas antes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="reserva-content-mis" class="reserva-tab-content">
+                        <p class="text-gray-600 mb-6">Revisa y gestiona tus próximas sesiones y solicitudes pendientes.</p>
+                        <div class="space-y-4">
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card pendiente grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="clock" class="w-5 h-5 text-warning"></i>
+                                    <p class="font-bold text-lg text-warning">10:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Programación C++ <span class="text-sm font-normal text-gray-500">(Estudiante B)</span></p>
+                                    <p class="text-sm text-gray-600">Jueves, 16 de Diciembre</p>
+                                    <p class="text-xs text-warning font-medium mt-1">Pendiente de Aprobación</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button onclick="alertMessage('Reserva Aceptada', 'success')" class="text-white bg-success hover:bg-success/80 text-xs px-3 py-1 rounded-full">Aceptar</button>
+                                    <button onclick="alertMessage('Reserva Rechazada', 'error')" class="text-error border border-error hover:bg-error/10 text-xs px-3 py-1 rounded-full">Rechazar</button>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card confirmada grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
+                                    <p class="font-bold text-lg text-success">14:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Física I - Estudiante C</p>
+                                    <p class="text-sm text-gray-600">Viernes, 17 de Diciembre</p>
+                                    <p class="text-xs text-success font-medium mt-1">Confirmada</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full">
+                                        <i data-lucide="message-square" class="w-5 h-5"></i>
+                                    </button>
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full">
+                                        <i data-lucide="video" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl card-shadow reserva-card confirmada grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                                <div class="col-span-1 flex items-center space-x-3">
+                                    <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
+                                    <p class="font-bold text-lg text-success">18:00</p>
+                                </div>
+                                <div class="col-span-3">
+                                    <p class="font-semibold text-primary-color">Cálculo Diferencial - Estudiante A</p>
+                                    <p class="text-sm text-gray-600">Hoy, 15 de Diciembre</p>
+                                    <p class="text-xs text-success font-medium mt-1">Confirmada</p>
+                                </div>
+                                <div class="col-span-1 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 justify-end">
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full">
+                                        <i data-lucide="message-square" class="w-5 h-5"></i>
+                                    </button>
+                                    <button class="text-primary-color hover:text-primary-color/80 text-sm p-1 rounded-full">
+                                        <i data-lucide="video" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="reserva-content-materias" class="reserva-tab-content hidden">
+                        <p class="text-gray-600 mb-6">Selecciona hasta **40 materias** en las que estás calificado para dar tutorías.</p>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                                <h3 class="text-lg font-semibold text-primary-color mb-3">Materias Seleccionadas <span id="subjects-counter" class="text-sm font-normal text-gray-500">(0 / 40)</span></h3>
+                                <div id="selected-subjects-list" class="space-y-2 max-h-96 overflow-y-auto p-2 bg-gray-100 rounded-xl border border-gray-200">
+                                    </div>
+                                <button onclick="alertMessage('¡Materias guardadas!', 'success')" class="mt-4 w-full bg-tertiary-color2 text-white px-4 py-2 rounded-xl hover:bg-tertiary-color2/90 font-medium">Guardar Materias Seleccionadas</button>
+                            </div>
+
+                            <div>
+                                <h3 class="text-lg font-semibold text-primary-color mb-3">Añadir Materia</h3>
+                                <input type="text" id="materias-search-input" oninput="renderMisMaterias(this.value)" placeholder="Buscar materia por nombre..." class="w-full p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-secondary-color focus:border-secondary-color mb-4">
+                                <div id="available-subjects-list" class="space-y-1 max-h-96 overflow-y-auto p-2 border border-gray-300 rounded-xl bg-white">
+                                    <div class="p-4 text-center text-gray-500">
+                                        Empieza a escribir para buscar materias disponibles.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="historial" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Historial de Tutorías</h2>
+                    <p class="text-gray-600 mb-6">Revisa tus sesiones pasadas, calificaciones y feedback de estudiantes.</p>
+
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between space-y-4 lg:space-y-0 mb-6">
+                        <div class="flex items-center space-x-4">
+                            <select class="p-2 border border-gray-300 rounded-xl text-sm">
+                                <option>Últimos 30 días</option>
+                                <option>Últimos 6 meses</option>
+                                <option>Todo el tiempo</option>
+                            </select>
+                            <input type="text" placeholder="Buscar por materia o estudiante..." class="p-2 border border-gray-300 rounded-xl text-sm">
+                        </div>
+                        <button class="bg-secondary-color text-white px-4 py-2 rounded-xl text-sm hover:bg-secondary-color/90 flex items-center justify-center lg:justify-start">
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Exportar a CSV
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                            <div class="col-span-1">
+                                <p class="font-bold text-primary-color">18/11/2023</p>
+                                <p class="text-xs text-gray-500">1.5 horas</p>
+                            </div>
+                            <div class="col-span-2">
+                                <p class="font-semibold">Cálculo Diferencial</p>
+                                <p class="text-sm text-gray-600">Estudiante A</p>
+                            </div>
+                            <div class="col-span-1 flex items-center">
+                                <i data-lucide="star" class="w-4 h-4 text-warning fill-warning mr-1"></i>
+                                <span class="text-sm font-medium">5.0</span>
+                            </div>
+                            <div class="col-span-1 text-right">
+                                <button class="text-primary-color hover:text-secondary-color text-sm">Ver Detalles</button>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                            <div class="col-span-1">
+                                <p class="font-bold text-primary-color">10/11/2023</p>
+                                <p class="text-xs text-gray-500">2.0 horas</p>
+                            </div>
+                            <div class="col-span-2">
+                                <p class="font-semibold">Programación Python</p>
+                                <p class="text-sm text-gray-600">Estudiante D</p>
+                            </div>
+                            <div class="col-span-1 flex items-center">
+                                <i data-lucide="star" class="w-4 h-4 text-warning fill-warning mr-1"></i>
+                                <span class="text-sm font-medium">4.5</span>
+                            </div>
+                            <div class="col-span-1 text-right">
+                                <button class="text-primary-color hover:text-secondary-color text-sm">Ver Detalles</button>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-1 sm:grid-cols-5 items-center gap-4">
+                            <div class="col-span-1">
+                                <p class="font-bold text-primary-color">01/11/2023</p>
+                                <p class="text-xs text-gray-500">1.0 hora</p>
+                            </div>
+                            <div class="col-span-2">
+                                <p class="font-semibold">Química General</p>
+                                <p class="text-sm text-gray-600">Estudiante E</p>
+                            </div>
+                            <div class="col-span-1 flex items-center">
+                                <i data-lucide="star" class="w-4 h-4 text-warning fill-warning mr-1"></i>
+                                <span class="text-sm font-medium">5.0</span>
+                            </div>
+                            <div class="col-span-1 text-right">
+                                <button class="text-primary-color hover:text-secondary-color text-sm">Ver Detalles</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+
+            <section id="pagos" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    <h2 class="text-xl font-semibold mb-4">Gestión de Pagos</h2>
+                    <p class="text-gray-600 mb-6">Administra tu saldo, historial de transacciones y configura tus métodos de retiro.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-primary-color text-text-light p-6 rounded-xl card-shadow flex flex-col justify-between">
+                            <p class="text-sm font-medium text-secondary-color">Saldo Actual Disponible</p>
+                            <p class="text-4xl font-bold mt-2">$2,145.50</p>
+                            <p class="text-xs mt-3 opacity-80">Próximo corte de pago: 25 de Dic.</p>
+                        </div>
+                        
+                        <div class="bg-warning text-text-light p-6 rounded-xl card-shadow flex flex-col justify-between">
+                            <p class="text-sm font-medium">Retiros Pendientes</p>
+                            <p class="text-4xl font-bold mt-2">$300.00</p>
+                            <p class="text-xs mt-3 opacity-80">El pago se procesará en 3-5 días hábiles.</p>
+                        </div>
+
+                        <div class="bg-white p-6 rounded-xl card-shadow border-l-4 border-tertiary-color2 flex flex-col justify-center items-center">
+                            <button onclick="alertMessage('Solicitud de retiro simulada.', 'info')" class="w-full bg-tertiary-color2 text-white px-6 py-3 rounded-xl text-lg font-semibold hover:bg-tertiary-color2/90 transition-colors">
+                                Retirar Fondos
+                            </button>
+                            <p class="text-sm text-gray-500 mt-2">Mínimo de retiro: $50.00</p>
+                        </div>
+                    </div>
+
+                    <h3 class="text-xl font-semibold mb-4 text-primary-color border-b pb-2">Historial de Transacciones</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-success/50">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="trending-up" class="w-5 h-5 text-success"></i>
+                                <div>
+                                    <p class="font-medium">Pago por Tutoría - Cálculo Diferencial</p>
+                                    <p class="text-sm text-gray-600">1.5 horas con Estudiante A (18/11/2023)</p>
+                                </div>
+                            </div>
+                            <span class="font-bold text-success">+$60.00</span>
+                        </div>
+                        <div class="flex justify-between items-center p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-error/50">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="trending-down" class="w-5 h-5 text-error"></i>
+                                <div>
+                                    <p class="font-medium">Retiro a Cuenta Bancaria</p>
+                                    <p class="text-sm text-gray-600">Referencia: #PAGO-10293</p>
+                                </div>
+                            </div>
+                            <span class="font-bold text-error">-$500.00</span>
+                        </div>
+                        <div class="flex justify-between items-center p-4 rounded-xl bg-gray-50 hover:bg-gray-100 border border-success/50">
+                            <div class="flex items-center space-x-3">
+                                <i data-lucide="trending-up" class="w-5 h-5 text-success"></i>
+                                <div>
+                                    <p class="font-medium">Pago por Tutoría - Programación Python</p>
+                                    <p class="text-sm text-gray-600">2.0 horas con Estudiante D (10/11/2023)</p>
+                                </div>
+                            </div>
+                            <span class="font-bold text-success">+$80.00</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="perfil" class="content-section hidden">
+                <div class="bg-white p-6 rounded-xl card-shadow">
+                    
+                    <nav class="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap space-x-4">
+                        <a href="#profile/detalles" id="tab-detalles" onclick="switchProfileTab('detalles'); return false;" class="profile-tab p-2 -mb-[2px] active-profile-tab hover:text-primary-color">Detalles personales</a>
+                        <a href="#profile/account-settings" id="tab-account-settings" onclick="switchProfileTab('account-settings'); return false;" class="profile-tab p-2 -mb-[2px] text-gray-600 hover:text-primary-color">Configuraciones de la cuenta</a>
+                        <a href="#profile/curriculum-highlights" id="tab-curriculum-highlights" onclick="switchProfileTab('curriculum-highlights'); return false;" class="profile-tab p-2 -mb-[2px] text-gray-600 hover:text-primary-color">Aspectos destacados del currículum</a>
+                        <a href="#profile/identity-verification" id="tab-identity-verification" onclick="switchProfileTab('identity-verification'); return false;" class="profile-tab p-2 -mb-[2px] text-gray-600 hover:text-primary-color">Verificación de identidad</a>
+                    </nav>
+
+                    <div id="content-detalles" class="profile-sub-content">
+                        <h2 class="text-2xl font-bold text-primary-color mb-4">Detalles personales</h2>
+                        <p class="text-gray-600 mb-6">Proporcione su información personal a continuación para completar su perfil</p>
+                        
+                        <form id="personal-details-form" onsubmit="event.preventDefault(); savePersonalDetails();" class="space-y-6">
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="name" class="block text-sm font-medium text-gray-700">Nombre</label>
+                                    <input type="text" id="name" name="name" placeholder="Nombre" required class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                </div>
+                                <div>
+                                    <label for="lastName" class="block text-sm font-medium text-gray-700">Apellido</label>
+                                    <input type="text" id="lastName" name="lastName" placeholder="Apellido" required class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                                    <input type="email" id="email" name="email" placeholder="@ejemplo.com" required class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 bg-gray-100">
+                                    <p class="mt-1 text-xs text-gray-500">El email no se puede cambiar.</p>
+                                </div>
+                                <div>
+                                    <label for="phone" class="block text-sm font-medium text-gray-700">Número de teléfono</label>
+                                    <input type="tel" id="phone" name="phone" placeholder="+591 7XXXXXXX" required class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                    <p id="phone-error" class="text-xs text-error mt-1 hidden">Este campo es obligatorio.</p>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Género</label>
+                                <div class="flex space-x-4">
+                                    <div class="flex items-center">
+                                        <input id="gender-male" name="gender" type="radio" value="Masculino" checked class="h-4 w-4 text-primary-color border-gray-300 focus:ring-secondary-color">
+                                        <label for="gender-male" class="ml-2 block text-sm text-gray-900">Masculino</label>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <input id="gender-female" name="gender" type="radio" value="Femenino" class="h-4 w-4 text-primary-color border-gray-300 focus:ring-secondary-color">
+                                        <label for="gender-female" class="ml-2 block text-sm text-gray-900">Femenino</label>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <input id="gender-other" name="gender" type="radio" value="Otro" class="h-4 w-4 text-primary-color border-gray-300 focus:ring-secondary-color">
+                                        <label for="gender-other" class="ml-2 block text-sm text-gray-900">Otro</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label for="bio" class="block text-sm font-medium text-gray-700">Biografía (Máx. 500 caracteres)</label>
+                                <textarea id="bio" name="bio" rows="4" maxlength="500" placeholder="Describe tu experiencia, estilo de enseñanza y por qué te encanta ser tutor..." class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color"></textarea>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div>
+        <label for="motherTongue" class="block text-sm font-medium text-gray-700">Idioma Materno</label>
+        <select id="motherTongue" name="motherTongue" class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+            <option value="" disabled selected>Seleccione un idioma</option>
+            <option value="espanol">Español</option>
+            <option value="ingles">Inglés</option>
+            <option value="portugues">Portugués</option>
+            <option value="frances">Francés</option>
+            <option value="aleman">Alemán</option>
+            <option value="chino">Chino Mandarín</option>
+            <option value="otro">Otro</option>
+        </select>
+    </div>
+    <div>
+        <label for="motto" class="block text-sm font-medium text-gray-700">Elija un Lema</label>
+        <select id="motto" name="motto" required class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+            <option value="" disabled selected>Seleccione un lema</option>
+            <option value="ensenar_es_aprender">Enseñar es aprender dos veces</option>
+            <option value="el_saber_es_poder">El saber es poder</option>
+            <option value="cada_dia_un_avance">Cada día, un avance</option>
+            <option value="la_paciencia_es_clave">La paciencia es la clave del éxito</option>
+            <option value="nunca_dejes_de_aprender">Nunca dejes de aprender</option>
+        </select>
+    </div>
+</div>
+                            
+                            <div>
+                                <label for="otherLanguages" class="block text-sm font-medium text-gray-700">Otros idiomas</label>
+                                <select id="otherLanguages" name="otherLanguages" multiple size="3" class="mt-1 block w-full rounded-xl border border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                    </select>
+                                <p class="mt-1 text-xs text-gray-500">Mantenga presionada la tecla Ctrl (o Cmd en Mac) para seleccionar múltiples idiomas.</p>
+                            </div>
+                            
+                            <div class="h-px bg-gray-200 my-8"></div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="p-4 border border-gray-200 rounded-xl flex flex-col items-center text-center">
+                                    <i data-lucide="image" class="w-10 h-10 text-secondary-color mb-3"></i>
+                                    <h3 class="text-lg font-semibold text-primary-color mb-3">Cargar Imagen</h3>
+                                    <p class="text-sm text-gray-500 mb-4">Una imagen vale más que mil palabras.</p>
+                                    <div class="w-24 h-24 bg-tertiary-color text-primary-color rounded-full flex items-center justify-center text-3xl font-bold mb-4">ER</div>
+                                    <input type="file" accept="image/*" class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-color file:text-white hover:file:bg-primary-color/90">
+                                </div>
+
+                                <div class="p-4 border border-gray-200 rounded-xl flex flex-col items-center text-center">
+                                    <i data-lucide="video" class="w-10 h-10 text-tertiary-color2 mb-3"></i>
+                                    <h3 class="text-lg font-semibold text-primary-color mb-3">Video de Introducción</h3>
+                                    <p class="text-sm text-gray-500 mb-4">Graba un video corto (máx. 60s) para presentarte.</p>
+                                    <div class="w-36 h-24 bg-gray-200 rounded-xl flex items-center justify-center mb-4">
+                                        <i data-lucide="play-circle" class="w-8 h-8 text-gray-600"></i>
+                                    </div>
+                                    <input type="file" accept="video/*" class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-color file:text-white hover:file:bg-primary-color/90">
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end pt-4">
+                                <button type="submit" class="bg-primary-color text-white px-6 py-3 rounded-xl text-lg font-semibold hover:bg-primary-color/90 transition-colors">
+                                    Guardar Cambios
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="content-account-settings" class="profile-sub-content hidden">
+                        <h2 class="text-2xl font-bold text-primary-color mb-4">Configuraciones de la cuenta</h2>
+                        <p class="text-gray-600 mb-6">Administra tu seguridad y preferencias de pago.</p>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            
+                            <div>
+                                <h3 class="text-xl font-semibold mb-3 text-primary-color">Seguridad</h3>
+                                <form id="password-form" onsubmit="event.preventDefault(); saveAccountSettings();" class="p-4 border border-gray-200 rounded-xl space-y-3">
+                                    <p class="font-semibold text-primary-color mb-3">Cambiar Contraseña</p>
+                                    
+                                    <input type="password" id="currentPassword" name="currentPassword" placeholder="Contraseña actual" class="mt-2 block w-full rounded-xl border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                    <input type="password" id="newPassword" name="newPassword" placeholder="Nueva contraseña" class="mt-2 block w-full rounded-xl border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                    <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirmar nueva contraseña" class="mt-2 block w-full rounded-xl border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                                    
+                                    <button type="submit" class="mt-3 bg-tertiary-color2 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-tertiary-color2/90">Actualizar Contraseña</button>
+                                </form>
+                                
+                                <div class="mt-6 p-4 border border-gray-200 rounded-xl">
+                                    <p class="font-semibold text-primary-color mb-3">Autenticación de Dos Factores (2FA)</p>
+                                    <p class="text-sm text-gray-600 mb-3">Añade una capa extra de seguridad a tu cuenta.</p>
+                                    <button class="bg-secondary-color text-white px-4 py-2 rounded-xl text-sm hover:bg-secondary-color/90">Configurar 2FA</button>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 class="text-xl font-semibold mb-3 text-primary-color">Preferencias y Notificaciones</h3>
+                                
+                                <form id="payment-preferences-form" onsubmit="event.preventDefault(); saveAccountSettings();" class="p-4 border border-gray-200 rounded-xl space-y-4">
+                                    <p class="font-semibold text-primary-color mb-3">Método de Pago Preferido</p>
+                                    <select id="paymentMethod" name="paymentMethod" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-secondary-color focus:border-secondary-color">
+                                        <option value="credit_card">Tarjeta de Crédito / Débito</option>
+                                        <option value="bank_transfer">Transferencia Bancaria (ACH)</option>
+                                        <option value="paypal">PayPal</option>
+                                        <option value="crypto">Criptomonedas</option>
+                                    </select>
+                                    <p class="text-sm text-gray-500">Este método se usará por defecto para procesar tus retiros.</p>
+                                    
+                                    <div class="pt-4 border-t border-gray-200">
+                                        <p class="font-semibold text-primary-color mb-3">Configuración de Reservas</p>
+                                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200">
+                                            <p class="text-sm font-medium">Auto-Aceptar todas las Reservas</p>
+                                            <div class="relative">
+                                                <input type="checkbox" id="auto-accept-reservas" class="toggle-checkbox">
+                                                <label for="auto-accept-reservas" class="toggle-label bg-gray-300 rounded-full"></label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="pt-4 border-t border-gray-200">
+                                        <p class="font-semibold text-primary-color mb-3">Preferencias de Notificación</p>
+                                        <div class="flex items-center space-x-2">
+                                            <input type="checkbox" id="email-notifications" checked class="rounded text-primary-color focus:ring-primary-color">
+                                            <label for="email-notifications" class="text-sm">Notificaciones por Email</label>
+                                        </div>
+                                        <div class="flex items-center space-x-2 mt-2">
+                                            <input type="checkbox" id="sms-notifications" class="rounded text-primary-color focus:ring-primary-color">
+                                            <label for="sms-notifications" class="text-sm">Notificaciones por SMS</label>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex justify-end pt-4">
+                                        <button type="submit" class="bg-primary-color text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary-color/90 transition-colors">
+                                            Guardar Ajustes
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="content-curriculum-highlights" class="profile-sub-content hidden">
+                        <h2 class="text-2xl font-bold text-primary-color mb-4">Aspectos destacados del currículum</h2>
+                        <p class="text-gray-600 mb-6">Muestra tu educación y experiencia laboral relevante para atraer a más estudiantes.</p>
+                        
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div class="p-6 border border-gray-200 rounded-xl bg-gray-50">
+                                <h3 class="text-xl font-semibold text-primary-color mb-4 flex items-center justify-between">
+                                    Educación
+                                    <button class="text-secondary-color hover:text-secondary-color/80 text-sm flex items-center font-medium">
+                                        <i data-lucide="plus" class="w-4 h-4 mr-1"></i> Añadir
+                                    </button>
+                                </h3>
+                                
+                                <div class="space-y-4">
+                                    <div class="p-3 border-l-4 border-tertiary-color rounded bg-white shadow-sm">
+                                        <p class="font-bold text-primary-color">Licenciatura en Ingeniería Civil</p>
+                                        <p class="text-sm text-gray-700">Universidad Mayor de San Simón (UMSS)</p>
+                                        <p class="text-xs text-gray-500">2010 - 2015</p>
+                                    </div>
+                                    <div class="p-3 border-l-4 border-tertiary-color rounded bg-white shadow-sm">
+                                        <p class="font-bold text-primary-color">Maestría en Matemáticas Aplicadas</p>
+                                        <p class="text-sm text-gray-700">Instituto Tecnológico de Buenos Aires (ITBA)</p>
+                                        <p class="text-xs text-gray-500">2018 - 2020</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-6 border border-gray-200 rounded-xl bg-gray-50">
+                                <h3 class="text-xl font-semibold text-primary-color mb-4 flex items-center justify-between">
+                                    Experiencia Laboral
+                                    <button class="text-secondary-color hover:text-secondary-color/80 text-sm flex items-center font-medium">
+                                        <i data-lucide="plus" class="w-4 h-4 mr-1"></i> Añadir
+                                    </button>
+                                </h3>
+                                
+                                <div class="space-y-4">
+                                    <div class="p-3 border-l-4 border-secondary-color rounded bg-white shadow-sm">
+                                        <p class="font-bold text-primary-color">Profesor Universitario de Cálculo</p>
+                                        <p class="text-sm text-gray-700">Universidad Pública (2020 - Actualidad)</p>
+                                        <p class="text-xs text-gray-500">Responsable de 5 cursos por semestre.</p>
+                                    </div>
+                                    <div class="p-3 border-l-4 border-secondary-color rounded bg-white shadow-sm">
+                                        <p class="font-bold text-primary-color">Tutor Independiente</p>
+                                        <p class="text-sm text-gray-700">Plataforma Online (2016 - 2019)</p>
+                                        <p class="text-xs text-gray-500">Más de 500 horas de tutoría impartidas.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end pt-6">
+                            <button onclick="saveCurriculumHighlights()" class="bg-primary-color text-white px-6 py-3 rounded-xl text-lg font-semibold hover:bg-primary-color/90 transition-colors">
+                                Guardar Currículum
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="content-identity-verification" class="profile-sub-content hidden">
+                        <h2 class="text-2xl font-bold text-primary-color mb-4">Verificación de identidad</h2>
+                        <p class="text-gray-600 mb-6">Completa los pasos para verificar tu identidad y aumentar la confianza de los estudiantes.</p>
+
+                        <div class="space-y-6 max-w-2xl">
+                            <div class="p-5 border border-gray-200 rounded-xl flex items-center justify-between bg-gray-50">
+                                <div class="flex items-center space-x-4">
+                                    <i data-lucide="scan" class="w-6 h-6 text-primary-color"></i>
+                                    <div>
+                                        <p class="font-semibold text-primary-color">Cargar Documento de Identidad</p>
+                                        <p class="text-sm text-gray-600">Cédula de identidad o Pasaporte. (Solo una vez)</p>
+                                    </div>
+                                </div>
+                                <span class="text-warning font-medium flex items-center">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4 mr-1"></i> Pendiente
+                                </span>
+                            </div>
+                            
+                            <div class="p-5 border border-gray-200 rounded-xl flex items-center justify-between bg-gray-50">
+                                <div class="flex items-center space-x-4">
+                                    <i data-lucide="camera" class="w-6 h-6 text-primary-color"></i>
+                                    <div>
+                                        <p class="font-semibold text-primary-color">Selfie de Verificación</p>
+                                        <p class="text-sm text-gray-600">Foto tuya sosteniendo tu documento.</p>
+                                    </div>
+                                </div>
+                                <span class="text-warning font-medium flex items-center">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4 mr-1"></i> Pendiente
+                                </span>
+                            </div>
+
+                            <div class="p-5 border border-gray-200 rounded-xl flex items-center justify-between bg-gray-50">
+                                <div class="flex items-center space-x-4">
+                                    <i data-lucide="shield-check" class="w-6 h-6 text-success"></i>
+                                    <div>
+                                        <p class="font-semibold text-primary-color">Verificación de Antecedentes</p>
+                                        <p class="text-sm text-gray-600">Revisión de tu historial profesional y académico.</p>
+                                    </div>
+                                </div>
+                                <span class="text-success font-medium flex items-center">
+                                    <i data-lucide="check-circle" class="w-4 h-4 mr-1"></i> Verificado
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center pt-8">
+                            <button onclick="startVerification()" class="bg-tertiary-color2 text-white px-8 py-3 rounded-xl text-lg font-semibold hover:bg-tertiary-color2/90 transition-colors">
+                                Iniciar Proceso de Verificación
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+            <!-- SECCIÓN 1: CURSO (Visible por defecto) -->
+            <section id="curso" class="content-section">
+                <!-- Tarjeta del Contenido del Módulo (CURSO) -->
+                <div class="am-card">
+                    <div class="am-card-header">
+                        <h4 class="text-lg font-bold text-gray-800">TEMA: INCLUSION Y ACCESIBILIDAD</h4>
+                        <small class="text-sm text-gray-600">Instructor: Edward</small>
+                    </div>
+                    <div class="am-card-body">
+                        
+                        <!-- Contenedor del Video -->
+                        <div class="am-video-container" wire:ignore="">
+                            <div class="plyr plyr--video plyr--youtube" id="player-curso">
+                                <div class="plyr__video-wrapper plyr__video-embed" style="aspect-ratio: 16 / 9;">
+                                    
+                                    <!-- Iframe de YouTube -->
+                                    <iframe id="youtube-6106" 
+                                            frameborder="0" 
+                                            allowfullscreen="" 
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                                            title="Player for ClassGo Curso 4 para Tutores - Inclusión y Accesibilidad en Tutorías Parte 1" 
+                                            width="640" 
+                                            height="360" 
+                                            src="https://www.youtube.com/watch?v=IwBDl6EvLqk">
+                                    </iframe>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Botón para ir al examen -->
+                        <button class="am-btnn am-btn-primary am-open-exam-modal mt-6">
+                            Ir al examen
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <div id="qr-modal" class="modal fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-primary-color">Mi Código QR de Pago</h3>
+                <button onclick="closeModal('qr-modal')" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="text-center mb-6 p-4 border border-gray-200 rounded-xl">
+                <div class="w-40 h-40 bg-primary-color mx-auto flex items-center justify-center rounded-lg mb-3">
+                    <i data-lucide="scan" class="w-12 h-12 text-white"></i>
+                </div>
+                <p class="text-sm text-gray-600">Escanea para pagar directamente por mis tutorías.</p>
+            </div>
+
+            <form id="qr-config-form" onsubmit="event.preventDefault(); configureQR();" class="space-y-4">
+                <div>
+                    <label for="qr-amount" class="block text-sm font-medium text-gray-700">Monto por defecto (opcional)</label>
+                    <input type="number" id="qr-amount" placeholder="Ej: 50.00" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                </div>
+                <div>
+                    <label for="qr-details" class="block text-sm font-medium text-gray-700">Concepto o Detalle (opcional)</label>
+                    <input type="text" id="qr-details" placeholder="Ej: Tutoría de Cálculo" class="mt-1 block w-full rounded-xl border-gray-300 shadow-sm p-3 focus:ring-secondary-color focus:border-secondary-color">
+                </div>
+                <div>
+                    <label for="qr-image" class="block text-sm font-medium text-gray-700">Imagen de Fondo (opcional)</label>
+                    <input type="file" id="qr-image" accept=".png, .jpg, .jpeg" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-color file:text-white hover:file:bg-primary-color/90">
+                </div>
+            </form>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button onclick="closeModal('qr-modal')" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-xl hover:bg-gray-300">Cerrar</button>
+                <button onclick="configureQR()" class="bg-tertiary-color2 text-white px-4 py-2 rounded-xl hover:bg-tertiary-color2/90">Guardar Configuración</button>
+            </div>
+        </div>
+    </div>
+    
+</body>
+</html>
